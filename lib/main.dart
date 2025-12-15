@@ -2,11 +2,15 @@
 
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:async';
 import 'services/app_sevice.dart';
 import 'services/app_blocking_service.dart';
 import 'screens/blocked_screen.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// Duration to hold the button to unblock an app (in seconds)
+const int holdDurationSeconds = 5;
 
 // Global navigator key to navigate from anywhere (including background services)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -395,18 +399,94 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                   app.name,
                   style: const TextStyle(color: Colors.white),
                 ),
-                trailing: Switch(
-                  value: isBlocked,
-                  onChanged: (value) {
-                    _toggleAppBlocked(app.packageName, value);
-                  },
-                  activeThumbColor: Colors.redAccent,
-                  inactiveThumbColor: Colors.white,
-                ),
+                trailing: isBlocked
+                    ? HoldToUnblockButton(onUnblocked: () => _toggleAppBlocked(app.packageName, false))
+                    : Switch(
+                        value: isBlocked,
+                        onChanged: (value) {
+                          _toggleAppBlocked(app.packageName, value);
+                        },
+                        activeThumbColor: Colors.redAccent,
+                        inactiveThumbColor: Colors.white,
+                      ),
               );
             },
           );
         },
+      ),
+    );
+  }
+}
+
+// Widget for holding to unblock an app
+class HoldToUnblockButton extends StatefulWidget {
+  final VoidCallback onUnblocked;
+
+  const HoldToUnblockButton({super.key, required this.onUnblocked});
+
+  @override
+  State<HoldToUnblockButton> createState() => _HoldToUnblockButtonState();
+}
+
+class _HoldToUnblockButtonState extends State<HoldToUnblockButton> {
+  bool _holding = false;
+  Timer? _timer;
+  int _secondsHeld = 0;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) {
+        setState(() {
+          _holding = true;
+          _secondsHeld = 0;
+        });
+        _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          setState(() {
+            _secondsHeld++;
+          });
+          if (_secondsHeld >= holdDurationSeconds) {
+            timer.cancel();
+            widget.onUnblocked();
+            setState(() {
+              _holding = false;
+            });
+          }
+        });
+      },
+      onTapUp: (_) {
+        _timer?.cancel();
+        setState(() {
+          _holding = false;
+          _secondsHeld = 0;
+        });
+      },
+      onTapCancel: () {
+        _timer?.cancel();
+        setState(() {
+          _holding = false;
+          _secondsHeld = 0;
+        });
+      },
+      child: Container(
+        width: 80,
+        height: 80,
+        decoration: BoxDecoration(
+          color: _holding ? Colors.redAccent : Colors.grey,
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: Text(
+            _holding ? '${holdDurationSeconds - _secondsHeld}s' : 'Hold',
+            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+        ),
       ),
     );
   }
