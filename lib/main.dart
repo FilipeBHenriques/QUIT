@@ -112,8 +112,9 @@ class _AppBlockingWrapperState extends State<AppBlockingWrapper>
   Future<void> _initializeBlocking() async {
     if (Platform.isAndroid) {
       bool hasUsagePermission = await AppBlockingService.hasPermission();
-      bool hasOverlayPermission = await AppBlockingService.hasOverlayPermission();
-      
+      bool hasOverlayPermission =
+          await AppBlockingService.hasOverlayPermission();
+
       setState(() {
         _hasPermission = hasUsagePermission && hasOverlayPermission;
         _checkingPermission = false;
@@ -336,15 +337,62 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
   }
 
   Future<void> _loadBlockedApps() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList('blocked_apps') ?? [];
-    setState(() {
-      _blockedApps = list.toSet();
-      _loadingPrefs = false;
-    });
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+
+      // Try string list first
+      List<String>? list = prefs.getStringList('blocked_apps');
+
+      if (list != null) {
+        setState(() {
+          _blockedApps = list.toSet();
+          _loadingPrefs = false;
+        });
+        return;
+      }
+
+      // Try JSON string (from Kotlin)
+      String? jsonString = prefs.getString('blocked_apps');
+      if (jsonString != null && jsonString.isNotEmpty) {
+        try {
+          // Remove brackets and quotes, split by comma
+          String cleaned = jsonString.trim();
+          if (cleaned.startsWith('[')) {
+            cleaned = cleaned.substring(1, cleaned.length - 1);
+          }
+
+          List<String> apps = cleaned
+              .split(',')
+              .map((s) => s.trim().replaceAll('"', ''))
+              .where((s) => s.isNotEmpty)
+              .toList();
+
+          setState(() {
+            _blockedApps = apps.toSet();
+            _loadingPrefs = false;
+          });
+          return;
+        } catch (e) {
+          print('Error parsing JSON: $e');
+        }
+      }
+
+      // Default: empty list
+      setState(() {
+        _blockedApps = {};
+        _loadingPrefs = false;
+      });
+    } catch (e) {
+      print('Error loading blocked apps: $e');
+      setState(() {
+        _blockedApps = {};
+        _loadingPrefs = false;
+      });
+    }
   }
 
   Future<void> _toggleAppBlocked(String packageName, bool blocked) async {
+    // Update in-memory state
     setState(() {
       if (blocked) {
         _blockedApps.add(packageName);
@@ -352,8 +400,64 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
         _blockedApps.remove(packageName);
       }
     });
+
+    // Get SharedPreferences
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('blocked_apps', _blockedApps.toList());
+
+    // Convert to list
+    List<String> appsList = _blockedApps.toList();
+
+    // Build CLEAN JSON manually - NO using join or any fancy stuff
+    String jsonString;
+
+    if (appsList.isEmpty) {
+      jsonString = '[]';
+    } else {
+      // Manually build: ["app1","app2","app3"]
+      jsonString = '[';
+      for (int i = 0; i < appsList.length; i++) {
+        jsonString += '"${appsList[i]}"';
+        if (i < appsList.length - 1) {
+          jsonString += ',';
+        }
+      }
+      jsonString += ']';
+    }
+
+    print('💾 Saving JSON: $jsonString');
+    print('🔍 JSON length: ${jsonString.length} characters');
+    print(
+      '🔍 First 50 chars: ${jsonString.substring(0, jsonString.length < 50 ? jsonString.length : 50)}',
+    );
+
+    // CRITICAL: Remove old key first to clear any corruption
+    await prefs.remove('blocked_apps');
+
+    // Now save the clean JSON
+    bool success = await prefs.setString('blocked_apps', jsonString);
+
+    print('✅ Save result: $success');
+
+    // Verify what was actually saved
+    String? readBack = prefs.getString('blocked_apps');
+
+    print('🔍 Read back: $readBack');
+    print('🔍 Match: ${readBack == jsonString}');
+
+    // Check for corruption
+    if (readBack != null && readBack != jsonString) {
+      print('❌ ERROR: Saved value does not match!');
+      print('   Expected: $jsonString');
+      print('   Got: $readBack');
+    }
+
+    if (readBack != null && readBack.contains('VGhpcyBpcyB0aGU')) {
+      print('❌ CRITICAL: Corruption detected in saved value!');
+      print('   There is code somewhere adding a prefix!');
+    }
+
+    // IMPORTANT: Notify the background service with new list
+    await AppBlockingService.updateBlockedApps(appsList);
   }
 
   @override
@@ -400,7 +504,10 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                   style: const TextStyle(color: Colors.white),
                 ),
                 trailing: isBlocked
-                    ? HoldToUnblockButton(onUnblocked: () => _toggleAppBlocked(app.packageName, false))
+                    ? HoldToUnblockButton(
+                        onUnblocked: () =>
+                            _toggleAppBlocked(app.packageName, false),
+                      )
                     : Switch(
                         value: isBlocked,
                         onChanged: (value) {
@@ -484,7 +591,11 @@ class _HoldToUnblockButtonState extends State<HoldToUnblockButton> {
         child: Center(
           child: Text(
             _holding ? '${holdDurationSeconds - _secondsHeld}s' : 'Hold',
-            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ),

@@ -13,10 +13,6 @@ class AppService {
         withIcon: true, // Set to true to include icons
       );
 
-      for (var app in installedApps) {
-        print('Name: ${app.name}, Package: ${app.packageName}');
-      }
-
       // Fix return: Map installedApps to AppInfo
       return installedApps.map<AppInfo>((app) => app).toList();
     } else if (Platform.isIOS) {
