@@ -26,7 +26,6 @@ class _BlockedScreenState extends State<BlockedScreen> {
   void initState() {
     super.initState();
     _loadAppName();
-    // Prevent back button
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
@@ -62,30 +61,47 @@ class _BlockedScreenState extends State<BlockedScreen> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
     blockedApps.remove(widget.blockedPackageName);
-    await prefs.setStringList('blocked_apps', blockedApps);
 
-    print('🟢 App removed from blocked_apps list');
+    // CRITICAL: Force save and wait
+    await prefs.remove('blocked_apps');
+    await Future.delayed(Duration(milliseconds: 100));
+    bool saved = await prefs.setStringList('blocked_apps', blockedApps);
+    await prefs.commit(); // Force commit
 
-    // Hide the overlay immediately via method channel
+    print('🟢 Saved to SharedPreferences: $saved');
+    print('🟢 New list: $blockedApps');
+
+    // Update the background monitoring service
+    try {
+      const monitoringChannel = MethodChannel('com.quit.app/monitoring');
+      await monitoringChannel.invokeMethod('updateBlockedApps', {
+        'blockedApps': blockedApps,
+      });
+      print('🟢 Background service updated');
+    } catch (e) {
+      print('❌ Error updating background service: $e');
+    }
+
+    // Hide the overlay
     try {
       const platform = MethodChannel('com.quit.app/overlay');
       await platform.invokeMethod('hideOverlay');
-      print('🟢 Overlay hidden via method channel');
+      print('🟢 Overlay hidden');
     } catch (e) {
       print('❌ Error hiding overlay: $e');
     }
 
-    // Call callback to notify parent widget
+    // Call callback
     if (mounted) {
       widget.onUnblocked?.call();
-      print('🟢 Callback onUnblocked called');
+      print('🟢 Callback called');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: () async => false, // Prevent back button
+      onWillPop: () async => false,
       child: Scaffold(
         backgroundColor: Colors.black,
         body: SafeArea(

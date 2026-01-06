@@ -21,7 +21,6 @@ Widget getHomeWidget() => const AppBlockingWrapper();
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-
   runApp(const QuitApp());
 }
 
@@ -85,11 +84,8 @@ class _AppBlockingWrapperState extends State<AppBlockingWrapper>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // App came to foreground, check permission and blocked apps
       _recheckPermission();
-      // Check immediately when app resumes
       _checkCurrentApp();
-      // Also check after a short delay to catch apps that just opened
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted) {
           _checkCurrentApp();
@@ -115,8 +111,9 @@ class _AppBlockingWrapperState extends State<AppBlockingWrapper>
   Future<void> _initializeBlocking() async {
     if (Platform.isAndroid) {
       bool hasUsagePermission = await AppBlockingService.hasPermission();
-      bool hasOverlayPermission = await AppBlockingService.hasOverlayPermission();
-      
+      bool hasOverlayPermission =
+          await AppBlockingService.hasOverlayPermission();
+
       setState(() {
         _hasPermission = hasUsagePermission && hasOverlayPermission;
         _checkingPermission = false;
@@ -125,7 +122,6 @@ class _AppBlockingWrapperState extends State<AppBlockingWrapper>
       if (hasUsagePermission && hasOverlayPermission) {
         _startMonitoring();
       } else {
-        // Request permissions
         if (!hasUsagePermission) {
           await _requestPermission();
         }
@@ -142,7 +138,6 @@ class _AppBlockingWrapperState extends State<AppBlockingWrapper>
 
   Future<void> _requestPermission() async {
     await AppBlockingService.requestPermission();
-    // Check again after requesting
     bool hasPermission = await AppBlockingService.hasPermission();
     setState(() {
       _hasPermission = hasPermission;
@@ -155,7 +150,6 @@ class _AppBlockingWrapperState extends State<AppBlockingWrapper>
   void _startMonitoring() {
     AppBlockingService.startMonitoring((blockedPackage) {
       if (mounted) {
-        // Use a post-frame callback to ensure safe state updates
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             setState(() {
@@ -185,7 +179,6 @@ class _AppBlockingWrapperState extends State<AppBlockingWrapper>
 
   @override
   Widget build(BuildContext context) {
-    // Show blocking screen if a blocked app is detected
     if (_blockedPackageName != null) {
       return BlockedScreen(
         blockedPackageName: _blockedPackageName!,
@@ -197,7 +190,6 @@ class _AppBlockingWrapperState extends State<AppBlockingWrapper>
       );
     }
 
-    // Show permission request screen if needed
     if (_checkingPermission) {
       return const Scaffold(
         backgroundColor: Colors.black,
@@ -269,12 +261,10 @@ class _AppBlockingWrapperState extends State<AppBlockingWrapper>
       );
     }
 
-    // Show home screen
     return const HomeScreen();
   }
 }
 
-// First screen with circular QUIT button
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -286,7 +276,6 @@ class HomeScreen extends StatelessWidget {
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
             onTap: () async {
-              // Navigate and wait for result
               await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -304,7 +293,6 @@ class HomeScreen extends StatelessWidget {
                 boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)],
               ),
               alignment: Alignment.center,
-              // Display the asset image in the circle, instead of Text('QUIT'):
               child: Image.asset(
                 'assets/icon/app_icon.png',
                 width: 80,
@@ -321,7 +309,6 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-// Now a stateful widget to manage blocked apps set
 class AppsSelectionScreen extends StatefulWidget {
   const AppsSelectionScreen({super.key});
 
@@ -329,7 +316,8 @@ class AppsSelectionScreen extends StatefulWidget {
   State<AppsSelectionScreen> createState() => _AppsSelectionScreenState();
 }
 
-class _AppsSelectionScreenState extends State<AppsSelectionScreen> with WidgetsBindingObserver {
+class _AppsSelectionScreenState extends State<AppsSelectionScreen>
+    with WidgetsBindingObserver {
   Set<String> _blockedApps = {};
   bool _loadingPrefs = true;
 
@@ -350,25 +338,53 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> with WidgetsB
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // Reload blocked apps when returning to this screen
       print('🔄 App resumed, reloading blocked apps list');
       _loadBlockedApps();
     }
   }
 
+  // ✅ FIXED: Always reload when screen appears
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    print('🔄 didChangeDependencies called');
+
+    // Add small delay to ensure SharedPrefs has been written by OverlayService
+    Future.delayed(Duration(milliseconds: 100), () {
+      if (mounted) {
+        _loadBlockedApps();
+      }
+    });
+  }
+
   Future<void> _loadBlockedApps() async {
+    print('📖 LOADING blocked apps from SharedPreferences...');
+
     SharedPreferences prefs = await SharedPreferences.getInstance();
+
+    // Force reload from disk
+    await prefs.reload();
+
+    // Check raw value
+    String? raw = prefs.getString('flutter.blocked_apps');
+    print('📋 Raw SharedPrefs value: $raw');
+
     final list = prefs.getStringList('blocked_apps') ?? [];
+    print('📋 Parsed to list: $list');
+
     if (mounted) {
       setState(() {
         _blockedApps = list.toSet();
         _loadingPrefs = false;
       });
     }
-    print('📋 Loaded blocked apps: $_blockedApps');
+
+    print('✅ UI updated - _blockedApps is now: $_blockedApps');
   }
 
   Future<void> _toggleAppBlocked(String packageName, bool blocked) async {
+    print('🔄 Toggling $packageName to blocked=$blocked');
+
     setState(() {
       if (blocked) {
         _blockedApps.add(packageName);
@@ -376,35 +392,41 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> with WidgetsB
         _blockedApps.remove(packageName);
       }
     });
+
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('blocked_apps', _blockedApps.toList());
+    await AppBlockingService.updateBlockedApps(_blockedApps.toList());
+
     print('✅ Toggled $packageName to blocked=$blocked');
   }
 
   @override
   Widget build(BuildContext context) {
-    // Wait for prefs to load before building
     if (_loadingPrefs) {
       return const Scaffold(
         backgroundColor: Colors.black,
         body: Center(child: CircularProgressIndicator()),
       );
     }
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(title: const Text('Select Apps to Block')),
       body: FutureBuilder(
-        future: AppService.getApps(), // platform-specific
+        future: AppService.getApps(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
+
           final apps = snapshot.data as List<AppInfo>;
+
           return ListView.builder(
             itemCount: apps.length,
             itemBuilder: (context, index) {
               final app = apps[index];
               final isBlocked = _blockedApps.contains(app.packageName);
+
               return ListTile(
                 leading: app.icon != null
                     ? Image.memory(
@@ -447,7 +469,6 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> with WidgetsB
   }
 }
 
-// Widget for holding to unblock an app
 class HoldToUnblockButton extends StatefulWidget {
   final Future<void> Function() onUnblocked;
 
@@ -516,7 +537,11 @@ class _HoldToUnblockButtonState extends State<HoldToUnblockButton> {
         child: Center(
           child: Text(
             _holding ? '${holdDurationSeconds - _secondsHeld}s' : 'Hold',
-            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ),

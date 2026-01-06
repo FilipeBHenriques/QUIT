@@ -1,50 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#FF000000"
-    android:gravity="center"
-    android:orientation="vertical"
-    android:padding="32dp">
+    android:clickable="true"
+    android:focusable="true">
 
-    <ImageView
-        android:layout_width="100dp"
-        android:layout_height="100dp"
-        android:src="@android:drawable/ic_dialog_alert"
-        android:tint="#FF0000"
-        android:layout_marginBottom="32dp" />
+    <!-- Close button (X) at top right -->
+    <ImageButton
+        android:id="@+id/closeButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentEnd="true"
+        android:layout_margin="16dp"
+        android:background="@android:drawable/ic_menu_close_clear_cancel"
+        android:contentDescription="Close"
+        android:tint="#FFFFFF" />
 
-    <TextView
-        android:id="@+id/blockedAppName"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="App is Blocked!"
-        android:textColor="#FFFFFF"
-        android:textSize="32sp"
-        android:textStyle="bold"
+        android:layout_centerInParent="true"
         android:gravity="center"
-        android:layout_marginBottom="16dp" />
+        android:orientation="vertical"
+        android:padding="32dp">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="This app has been blocked.\nYou cannot access it right now."
-        android:textColor="#CCCCCC"
-        android:textSize="16sp"
-        android:gravity="center"
-        android:layout_marginBottom="48dp" />
+        <!-- Block icon -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🚫"
+            android:textSize="80sp" />
 
-    <Button
-        android:id="@+id/unblockButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Unblock This App"
-        android:textColor="#000000"
-        android:backgroundTint="#FFFFFF"
-        android:paddingLeft="32dp"
-        android:paddingRight="32dp"
-        android:paddingTop="16dp"
-        android:paddingBottom="16dp" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="App Blocked!"
+            android:textColor="#FFFFFF"
+            android:textSize="32sp"
+            android:textStyle="bold" />
 
-</LinearLayout>
+        <TextView
+            android:id="@+id/blockedAppName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="This app is blocked"
+            android:textColor="#CCCCCC"
+            android:textSize="20sp" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:gravity="center"
+            android:text="Press back or tap X to exit\nClick below to permanently unblock"
+            android:textColor="#999999"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/unblockButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:backgroundTint="#FFFFFF"
+            android:paddingHorizontal="32dp"
+            android:paddingVertical="16dp"
+            android:text="Unblock This App"
+            android:textColor="#000000"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+</RelativeLayout>
