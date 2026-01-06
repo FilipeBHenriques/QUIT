@@ -5,12 +5,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usage_stats/usage_stats.dart';
 
 class AppBlockingService {
-  static const platform = MethodChannel('com.quit.app/service');
   static Timer? _monitoringTimer;
   static bool _isMonitoring = false;
   static Function(String)? _onBlockedAppDetected;
+  static String? _currentlyBlockedApp;
 
-  /// Start monitoring foreground apps with foreground service
+  /// Start monitoring foreground apps
   static Future<void> startMonitoring(
     Function(String) onBlockedAppDetected,
   ) async {
@@ -20,36 +20,18 @@ class AppBlockingService {
     _isMonitoring = true;
 
     if (Platform.isAndroid) {
-      // Check permissions first
+      // Check permission first
       bool? hasPermission = await UsageStats.checkUsagePermission();
-      bool hasOverlay = await hasOverlayPermission();
-
-      if (hasPermission != true || !hasOverlay) {
-        print('❌ Missing permissions');
+      if (hasPermission != true) {
+        // Permission not granted, will need to request it
         _isMonitoring = false;
         return;
       }
 
-      // Get current blocked apps list
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
+      // Setup method channel listener for unblock events from overlay
+      _setupMethodChannelListener();
 
-      print(
-        '📋 Starting monitoring service with ${blockedApps.length} blocked apps',
-      );
-      print('📋 Blocked apps: $blockedApps');
-
-      // Start foreground service and SEND the blocked apps list
-      try {
-        await platform.invokeMethod('startMonitoringService', {
-          'blockedApps': blockedApps,
-        });
-        print('✅ Foreground monitoring service started with blocked apps');
-      } catch (e) {
-        print('❌ Error starting monitoring service: $e');
-      }
-
-      // Also run in-app monitoring for when app is open
+      // Start periodic monitoring - check every 1 second for faster detection
       _monitoringTimer = Timer.periodic(const Duration(seconds: 1), (
         timer,
       ) async {
@@ -58,48 +40,68 @@ class AppBlockingService {
     }
   }
 
+  /// Setup method channel to listen for unblock events from overlay
+  static void _setupMethodChannelListener() {
+    const platform = MethodChannel('com.quit.app/overlay');
+    platform.setMethodCallHandler((call) async {
+      if (call.method == 'unblockedApp') {
+        final packageName = call.arguments['packageName'] as String?;
+        if (packageName != null) {
+          print('📱 Received unblock event from overlay for: $packageName');
+          await unblockApp(packageName);
+        }
+      }
+    });
+  }
+
   /// Stop monitoring
-  static Future<void> stopMonitoring() async {
+  static void stopMonitoring() {
     _monitoringTimer?.cancel();
     _monitoringTimer = null;
     _isMonitoring = false;
     _onBlockedAppDetected = null;
-
-    if (Platform.isAndroid) {
-      try {
-        await platform.invokeMethod('stopMonitoringService');
-        print('✅ Monitoring service stopped');
-      } catch (e) {
-        print('❌ Error stopping monitoring service: $e');
-      }
-    }
-  }
-
-  /// Update the blocked apps list in the running service
-  static Future<void> updateBlockedApps(List<String> blockedApps) async {
-    if (!Platform.isAndroid) return;
-
-    try {
-      print('📋 Updating service with ${blockedApps.length} blocked apps');
-      await platform.invokeMethod('updateBlockedApps', {
-        'blockedApps': blockedApps,
-      });
-      print('✅ Service updated with new blocked apps list');
-    } catch (e) {
-      print('❌ Error updating blocked apps: $e');
-    }
+    _currentlyBlockedApp = null;
   }
 
   /// Check if a blocked app is currently in the foreground
   static Future<void> _checkForegroundApp() async {
     try {
-      String? foregroundPackage = await getCurrentForegroundApp();
+      DateTime now = DateTime.now();
+      DateTime start = now.subtract(const Duration(seconds: 5));
+      List<UsageInfo> stats = await UsageStats.queryUsageStats(start, now);
+
+      if (stats.isEmpty) return;
+
+      // Sort by last time used to get the most recent app
+      stats.sort((a, b) {
+        dynamic aTime = a.lastTimeUsed;
+        dynamic bTime = b.lastTimeUsed;
+
+        if (aTime == null && bTime == null) return 0;
+        if (aTime == null) return 1;
+        if (bTime == null) return -1;
+
+        if (aTime is DateTime && bTime is DateTime) return bTime.compareTo(aTime);
+        if (aTime is String && bTime is String) {
+          try {
+            DateTime aDate = DateTime.parse(aTime);
+            DateTime bDate = DateTime.parse(bTime);
+            return bDate.compareTo(aDate);
+          } catch (e) {
+            return bTime.compareTo(aTime);
+          }
+        }
+        if (aTime is int && bTime is int) return bTime.compareTo(aTime);
+
+        return bTime.toString().compareTo(aTime.toString());
+      });
+
+      String? foregroundPackage = stats.first.packageName;
       if (foregroundPackage == null) return;
 
-      // Skip if it's our own app
+      // Skip own app
       if (foregroundPackage == 'com.example.quit' ||
           foregroundPackage.contains('com.example.quit')) {
-        await _hideOverlay();
         return;
       }
 
@@ -107,15 +109,31 @@ class AppBlockingService {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
 
+      print(
+        '🔍 Checking app: $foregroundPackage, Blocked: ${blockedApps.contains(foregroundPackage)}',
+      );
+
       if (blockedApps.contains(foregroundPackage)) {
-        print('🚫 BLOCKED APP DETECTED: $foregroundPackage');
-        await _showOverlay(foregroundPackage);
-        _onBlockedAppDetected?.call(foregroundPackage);
+        // Only show overlay if it's a new blocked app
+        if (_currentlyBlockedApp != foregroundPackage) {
+          _currentlyBlockedApp = foregroundPackage;
+          print('🚫 BLOCKED APP DETECTED: $foregroundPackage');
+
+          // Show overlay
+          await _showOverlay(foregroundPackage);
+
+          // Notify callback
+          _onBlockedAppDetected?.call(foregroundPackage);
+        }
       } else {
-        await _hideOverlay();
+        // App is not blocked, clear current blocked app and hide overlay
+        if (_currentlyBlockedApp != null) {
+          _currentlyBlockedApp = null;
+          await _hideOverlay();
+        }
       }
     } catch (e) {
-      print('❌ Error checking foreground app: $e');
+      print('Error checking foreground app: $e');
     }
   }
 
@@ -137,8 +155,13 @@ class AppBlockingService {
     if (!Platform.isAndroid) return;
 
     try {
+      String appName = packageName;
+
       const platform = MethodChannel('com.quit.app/overlay');
-      await platform.invokeMethod('showOverlay', {'packageName': packageName});
+      await platform.invokeMethod('showOverlay', {
+        'packageName': packageName,
+        'appName': appName,
+      });
       print('✅ Overlay shown for: $packageName');
     } catch (e) {
       print('❌ Error showing overlay: $e');
@@ -152,8 +175,31 @@ class AppBlockingService {
     try {
       const platform = MethodChannel('com.quit.app/overlay');
       await platform.invokeMethod('hideOverlay');
+      print('✅ Overlay hidden');
     } catch (e) {
-      // Ignore errors when hiding
+      print('Error hiding overlay: $e');
+    }
+  }
+
+  /// Public method to unblock app and hide overlay
+  static Future<void> unblockApp(String packageName) async {
+    try {
+      print('🔓 Unblocking app: $packageName');
+      
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
+      blockedApps.remove(packageName);
+      await prefs.setStringList('blocked_apps', blockedApps);
+
+      // Clear currently blocked app
+      _currentlyBlockedApp = null;
+
+      // Hide overlay immediately
+      await _hideOverlay();
+
+      print('✅ App unblocked and overlay hidden: $packageName');
+    } catch (e) {
+      print('Error unblocking app: $e');
     }
   }
 
@@ -166,7 +212,7 @@ class AppBlockingService {
       final result = await platform.invokeMethod('checkOverlayPermission');
       return result as bool? ?? false;
     } catch (e) {
-      print('❌ Error checking overlay permission: $e');
+      print('Error checking overlay permission: $e');
       return false;
     }
   }
@@ -179,7 +225,7 @@ class AppBlockingService {
       const platform = MethodChannel('com.quit.app/permission');
       await platform.invokeMethod('requestOverlayPermission');
     } catch (e) {
-      print('❌ Error requesting overlay permission: $e');
+      print('Error requesting overlay permission: $e');
     }
   }
 
@@ -202,10 +248,7 @@ class AppBlockingService {
         if (aTime == null) return 1;
         if (bTime == null) return -1;
 
-        if (aTime is DateTime && bTime is DateTime) {
-          return bTime.compareTo(aTime);
-        }
-
+        if (aTime is DateTime && bTime is DateTime) return bTime.compareTo(aTime);
         if (aTime is String && bTime is String) {
           try {
             DateTime aDate = DateTime.parse(aTime);
@@ -215,38 +258,14 @@ class AppBlockingService {
             return bTime.compareTo(aTime);
           }
         }
-
-        if (aTime is int && bTime is int) {
-          return bTime.compareTo(aTime);
-        }
+        if (aTime is int && bTime is int) return bTime.compareTo(aTime);
 
         return bTime.toString().compareTo(aTime.toString());
       });
-
       return stats.first.packageName;
     } catch (e) {
-      print('❌ Error getting foreground app: $e');
+      print('Error getting foreground app: $e');
       return null;
-    }
-  }
-
-  /// Unblock an app
-  static Future<void> unblockApp(String packageName) async {
-    try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
-      blockedApps.remove(packageName);
-      await prefs.setStringList('blocked_apps', blockedApps);
-
-      // Update the service with new list
-      await updateBlockedApps(blockedApps);
-
-      // Hide overlay immediately
-      await _hideOverlay();
-
-      print('✅ App unblocked: $blockedApps');
-    } catch (e) {
-      print('❌ Error unblocking app: $e');
     }
   }
 }

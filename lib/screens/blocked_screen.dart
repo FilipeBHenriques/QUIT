@@ -56,14 +56,29 @@ class _BlockedScreenState extends State<BlockedScreen> {
   }
 
   Future<void> _unblockApp() async {
+    print('🟢 Unblock button pressed for: ${widget.blockedPackageName}');
+
+    // Remove from blocked apps list
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
     blockedApps.remove(widget.blockedPackageName);
     await prefs.setStringList('blocked_apps', blockedApps);
 
+    print('🟢 App removed from blocked_apps list');
+
+    // Hide the overlay immediately via method channel
+    try {
+      const platform = MethodChannel('com.quit.app/overlay');
+      await platform.invokeMethod('hideOverlay');
+      print('🟢 Overlay hidden via method channel');
+    } catch (e) {
+      print('❌ Error hiding overlay: $e');
+    }
+
     // Call callback to notify parent widget
     if (mounted) {
       widget.onUnblocked?.call();
+      print('🟢 Callback onUnblocked called');
     }
   }
 

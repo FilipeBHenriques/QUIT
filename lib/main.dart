@@ -19,6 +19,9 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 Widget getHomeWidget() => const AppBlockingWrapper();
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+
   runApp(const QuitApp());
 }
 
@@ -112,9 +115,8 @@ class _AppBlockingWrapperState extends State<AppBlockingWrapper>
   Future<void> _initializeBlocking() async {
     if (Platform.isAndroid) {
       bool hasUsagePermission = await AppBlockingService.hasPermission();
-      bool hasOverlayPermission =
-          await AppBlockingService.hasOverlayPermission();
-
+      bool hasOverlayPermission = await AppBlockingService.hasOverlayPermission();
+      
       setState(() {
         _hasPermission = hasUsagePermission && hasOverlayPermission;
         _checkingPermission = false;
@@ -283,8 +285,9 @@ class HomeScreen extends StatelessWidget {
         child: MouseRegion(
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
-            onTap: () {
-              Navigator.push(
+            onTap: () async {
+              // Navigate and wait for result
+              await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const AppsSelectionScreen(),
@@ -326,73 +329,46 @@ class AppsSelectionScreen extends StatefulWidget {
   State<AppsSelectionScreen> createState() => _AppsSelectionScreenState();
 }
 
-class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
+class _AppsSelectionScreenState extends State<AppsSelectionScreen> with WidgetsBindingObserver {
   Set<String> _blockedApps = {};
   bool _loadingPrefs = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadBlockedApps();
   }
 
-  Future<void> _loadBlockedApps() async {
-    try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
-      // Try string list first
-      List<String>? list = prefs.getStringList('blocked_apps');
-
-      if (list != null) {
-        setState(() {
-          _blockedApps = list.toSet();
-          _loadingPrefs = false;
-        });
-        return;
-      }
-
-      // Try JSON string (from Kotlin)
-      String? jsonString = prefs.getString('blocked_apps');
-      if (jsonString != null && jsonString.isNotEmpty) {
-        try {
-          // Remove brackets and quotes, split by comma
-          String cleaned = jsonString.trim();
-          if (cleaned.startsWith('[')) {
-            cleaned = cleaned.substring(1, cleaned.length - 1);
-          }
-
-          List<String> apps = cleaned
-              .split(',')
-              .map((s) => s.trim().replaceAll('"', ''))
-              .where((s) => s.isNotEmpty)
-              .toList();
-
-          setState(() {
-            _blockedApps = apps.toSet();
-            _loadingPrefs = false;
-          });
-          return;
-        } catch (e) {
-          print('Error parsing JSON: $e');
-        }
-      }
-
-      // Default: empty list
-      setState(() {
-        _blockedApps = {};
-        _loadingPrefs = false;
-      });
-    } catch (e) {
-      print('Error loading blocked apps: $e');
-      setState(() {
-        _blockedApps = {};
-        _loadingPrefs = false;
-      });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // Reload blocked apps when returning to this screen
+      print('🔄 App resumed, reloading blocked apps list');
+      _loadBlockedApps();
     }
   }
 
+  Future<void> _loadBlockedApps() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('blocked_apps') ?? [];
+    if (mounted) {
+      setState(() {
+        _blockedApps = list.toSet();
+        _loadingPrefs = false;
+      });
+    }
+    print('📋 Loaded blocked apps: $_blockedApps');
+  }
+
   Future<void> _toggleAppBlocked(String packageName, bool blocked) async {
-    // Update in-memory state
     setState(() {
       if (blocked) {
         _blockedApps.add(packageName);
@@ -400,64 +376,9 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
         _blockedApps.remove(packageName);
       }
     });
-
-    // Get SharedPreferences
     SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    // Convert to list
-    List<String> appsList = _blockedApps.toList();
-
-    // Build CLEAN JSON manually - NO using join or any fancy stuff
-    String jsonString;
-
-    if (appsList.isEmpty) {
-      jsonString = '[]';
-    } else {
-      // Manually build: ["app1","app2","app3"]
-      jsonString = '[';
-      for (int i = 0; i < appsList.length; i++) {
-        jsonString += '"${appsList[i]}"';
-        if (i < appsList.length - 1) {
-          jsonString += ',';
-        }
-      }
-      jsonString += ']';
-    }
-
-    print('💾 Saving JSON: $jsonString');
-    print('🔍 JSON length: ${jsonString.length} characters');
-    print(
-      '🔍 First 50 chars: ${jsonString.substring(0, jsonString.length < 50 ? jsonString.length : 50)}',
-    );
-
-    // CRITICAL: Remove old key first to clear any corruption
-    await prefs.remove('blocked_apps');
-
-    // Now save the clean JSON
-    bool success = await prefs.setString('blocked_apps', jsonString);
-
-    print('✅ Save result: $success');
-
-    // Verify what was actually saved
-    String? readBack = prefs.getString('blocked_apps');
-
-    print('🔍 Read back: $readBack');
-    print('🔍 Match: ${readBack == jsonString}');
-
-    // Check for corruption
-    if (readBack != null && readBack != jsonString) {
-      print('❌ ERROR: Saved value does not match!');
-      print('   Expected: $jsonString');
-      print('   Got: $readBack');
-    }
-
-    if (readBack != null && readBack.contains('VGhpcyBpcyB0aGU')) {
-      print('❌ CRITICAL: Corruption detected in saved value!');
-      print('   There is code somewhere adding a prefix!');
-    }
-
-    // IMPORTANT: Notify the background service with new list
-    await AppBlockingService.updateBlockedApps(appsList);
+    await prefs.setStringList('blocked_apps', _blockedApps.toList());
+    print('✅ Toggled $packageName to blocked=$blocked');
   }
 
   @override
@@ -505,8 +426,9 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                 ),
                 trailing: isBlocked
                     ? HoldToUnblockButton(
-                        onUnblocked: () =>
-                            _toggleAppBlocked(app.packageName, false),
+                        onUnblocked: () async {
+                          await _toggleAppBlocked(app.packageName, false);
+                        },
                       )
                     : Switch(
                         value: isBlocked,
@@ -527,7 +449,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
 
 // Widget for holding to unblock an app
 class HoldToUnblockButton extends StatefulWidget {
-  final VoidCallback onUnblocked;
+  final Future<void> Function() onUnblocked;
 
   const HoldToUnblockButton({super.key, required this.onUnblocked});
 
@@ -560,9 +482,12 @@ class _HoldToUnblockButtonState extends State<HoldToUnblockButton> {
           });
           if (_secondsHeld >= holdDurationSeconds) {
             timer.cancel();
-            widget.onUnblocked();
-            setState(() {
-              _holding = false;
+            widget.onUnblocked().then((_) {
+              if (mounted) {
+                setState(() {
+                  _holding = false;
+                });
+              }
             });
           }
         });
@@ -591,11 +516,7 @@ class _HoldToUnblockButtonState extends State<HoldToUnblockButton> {
         child: Center(
           child: Text(
             _holding ? '${holdDurationSeconds - _secondsHeld}s' : 'Hold',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
           ),
         ),
       ),
