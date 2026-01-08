@@ -1,26 +1,16 @@
-// lib/main.dart
-
 import 'package:flutter/material.dart';
-import 'dart:io';
+import 'package:flutter/services.dart';
 import 'dart:async';
-import 'services/app_sevice.dart';
-import 'services/app_blocking_service.dart';
-import 'screens/blocked_screen.dart';
-import 'package:installed_apps/app_info.dart';
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:installed_apps/app_info.dart';
+import 'package:installed_apps/installed_apps.dart';
+import 'screens/blocked_screen.dart';
 
-// Duration to hold the button to unblock an app (in seconds)
 const int holdDurationSeconds = 5;
-
-// Global navigator key to navigate from anywhere (including background services)
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-
-// Helper function to get the home widget (used when navigating back from blocking screen)
-Widget getHomeWidget() => const AppBlockingWrapper();
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
   runApp(const QuitApp());
 }
 
@@ -30,279 +20,102 @@ class QuitApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: navigatorKey,
       title: 'QUIT App',
-      theme: ThemeData(
-        brightness: Brightness.dark,
+      theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: Colors.black,
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.white,
           brightness: Brightness.dark,
-          primary: Colors.white,
-          secondary: Colors.white,
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
-        ),
-        useMaterial3: true,
       ),
-      home: const AppBlockingWrapper(),
+      home: const HomeScreen(),
+      routes: {'/blocked': (context) => const BlockedScreen()},
     );
   }
 }
 
-/// Wrapper widget that monitors for blocked apps and shows blocking screen
-class AppBlockingWrapper extends StatefulWidget {
-  const AppBlockingWrapper({super.key});
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<AppBlockingWrapper> createState() => _AppBlockingWrapperState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _AppBlockingWrapperState extends State<AppBlockingWrapper>
-    with WidgetsBindingObserver {
-  String? _blockedPackageName;
-  bool _checkingPermission = true;
-  bool _hasPermission = false;
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  static const platform = MethodChannel('com.quit.app/monitoring');
+  bool _isMonitoring = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initializeBlocking();
+    _startMonitoringIfNeeded();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    AppBlockingService.stopMonitoring();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      _recheckPermission();
-      _checkCurrentApp();
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) {
-          _checkCurrentApp();
-        }
-      });
+      _startMonitoringIfNeeded();
     }
   }
 
-  Future<void> _recheckPermission() async {
+  Future<void> _startMonitoringIfNeeded() async {
     if (!Platform.isAndroid) return;
-
-    bool hasPermission = await AppBlockingService.hasPermission();
-    if (hasPermission != _hasPermission) {
-      setState(() {
-        _hasPermission = hasPermission;
-      });
-      if (hasPermission) {
-        _startMonitoring();
-      }
-    }
-  }
-
-  Future<void> _initializeBlocking() async {
-    if (Platform.isAndroid) {
-      bool hasUsagePermission = await AppBlockingService.hasPermission();
-      bool hasOverlayPermission =
-          await AppBlockingService.hasOverlayPermission();
-
-      setState(() {
-        _hasPermission = hasUsagePermission && hasOverlayPermission;
-        _checkingPermission = false;
-      });
-
-      if (hasUsagePermission && hasOverlayPermission) {
-        _startMonitoring();
-      } else {
-        if (!hasUsagePermission) {
-          await _requestPermission();
-        }
-        if (!hasOverlayPermission) {
-          await AppBlockingService.requestOverlayPermission();
-        }
-      }
-    } else {
-      setState(() {
-        _checkingPermission = false;
-      });
-    }
-  }
-
-  Future<void> _requestPermission() async {
-    await AppBlockingService.requestPermission();
-    bool hasPermission = await AppBlockingService.hasPermission();
-    setState(() {
-      _hasPermission = hasPermission;
-    });
-    if (hasPermission) {
-      _startMonitoring();
-    }
-  }
-
-  void _startMonitoring() {
-    AppBlockingService.startMonitoring((blockedPackage) {
-      if (mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() {
-              _blockedPackageName = blockedPackage;
-            });
-          }
-        });
-      }
-    });
-  }
-
-  Future<void> _checkCurrentApp() async {
-    if (!Platform.isAndroid) return;
-
-    String? currentApp = await AppBlockingService.getCurrentForegroundApp();
-    if (currentApp == null) return;
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
 
-    if (blockedApps.contains(currentApp) && mounted) {
-      setState(() {
-        _blockedPackageName = currentApp;
-      });
+    if (blockedApps.isNotEmpty && !_isMonitoring) {
+      try {
+        await platform.invokeMethod('startMonitoring', {
+          'blockedApps': blockedApps,
+        });
+        setState(() {
+          _isMonitoring = true;
+        });
+        print('✅ Monitoring started with ${blockedApps.length} apps');
+      } catch (e) {
+        print('❌ Error starting monitoring: $e');
+      }
     }
   }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_blockedPackageName != null) {
-      return BlockedScreen(
-        blockedPackageName: _blockedPackageName!,
-        onUnblocked: () {
-          setState(() {
-            _blockedPackageName = null;
-          });
-        },
-      );
-    }
-
-    if (_checkingPermission) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (!_hasPermission && Platform.isAndroid) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.security, size: 80, color: Colors.white),
-                const SizedBox(height: 32),
-                const Text(
-                  'Permission Required',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'This app needs Usage Access permission to monitor and block apps.',
-                  style: TextStyle(fontSize: 16, color: Colors.white70),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: _requestPermission,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                  ),
-                  child: const Text(
-                    'Grant Permission',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: _recheckPermission,
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                  ),
-                  child: const Text(
-                    'Check Again',
-                    style: TextStyle(fontSize: 14),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return const HomeScreen();
-  }
-}
-
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AppsSelectionScreen(),
-                ),
-              );
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 100),
-              width: 150,
-              height: 150,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)],
+        child: GestureDetector(
+          onTap: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AppsSelectionScreen(),
               ),
-              alignment: Alignment.center,
-              child: Image.asset(
-                'assets/icon/app_icon.png',
-                width: 80,
-                height: 80,
-                fit: BoxFit.contain,
-              ),
+            );
+            // Restart monitoring with updated list when returning
+            setState(() {
+              _isMonitoring = false;
+            });
+            _startMonitoringIfNeeded();
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            width: 150,
+            height: 150,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)],
             ),
+            alignment: Alignment.center,
+            child: const Icon(Icons.block, size: 80, color: Colors.black),
           ),
-          onEnter: (_) {},
-          onExit: (_) {},
         ),
       ),
     );
@@ -316,155 +129,220 @@ class AppsSelectionScreen extends StatefulWidget {
   State<AppsSelectionScreen> createState() => _AppsSelectionScreenState();
 }
 
-class _AppsSelectionScreenState extends State<AppsSelectionScreen>
-    with WidgetsBindingObserver {
+class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
+  static const platform = MethodChannel('com.quit.app/monitoring');
   Set<String> _blockedApps = {};
+  Set<String> _togglingApps =
+      {}; // Track which apps are currently being toggled
   bool _loadingPrefs = true;
+  late Future<List<AppInfo>> _appsFuture; // Cache the future
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _loadBlockedApps();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
-      print('🔄 App resumed, reloading blocked apps list');
-      _loadBlockedApps();
-    }
-  }
-
-  // ✅ FIXED: Always reload when screen appears
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    print('🔄 didChangeDependencies called');
-
-    // Add small delay to ensure SharedPrefs has been written by OverlayService
-    Future.delayed(Duration(milliseconds: 100), () {
-      if (mounted) {
-        _loadBlockedApps();
-      }
-    });
+    _appsFuture = InstalledApps.getInstalledApps(
+      excludeSystemApps: true,
+      excludeNonLaunchableApps: true,
+      withIcon: true,
+    );
   }
 
   Future<void> _loadBlockedApps() async {
-    print('📖 LOADING blocked apps from SharedPreferences...');
-
     SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    // Force reload from disk
     await prefs.reload();
-
-    // Check raw value
-    String? raw = prefs.getString('flutter.blocked_apps');
-    print('📋 Raw SharedPrefs value: $raw');
-
     final list = prefs.getStringList('blocked_apps') ?? [];
-    print('📋 Parsed to list: $list');
-
     if (mounted) {
       setState(() {
         _blockedApps = list.toSet();
         _loadingPrefs = false;
       });
     }
-
-    print('✅ UI updated - _blockedApps is now: $_blockedApps');
   }
 
   Future<void> _toggleAppBlocked(String packageName, bool blocked) async {
-    print('🔄 Toggling $packageName to blocked=$blocked');
-
+    // Optimistically update UI
     setState(() {
       if (blocked) {
         _blockedApps.add(packageName);
       } else {
         _blockedApps.remove(packageName);
       }
+      _togglingApps.add(packageName);
     });
 
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('blocked_apps', _blockedApps.toList());
-    await AppBlockingService.updateBlockedApps(_blockedApps.toList());
+    // Save in background
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('blocked_apps', _blockedApps.toList());
 
-    print('✅ Toggled $packageName to blocked=$blocked');
+      // Update the monitoring service
+      await platform.invokeMethod('updateBlockedApps', {
+        'blockedApps': _blockedApps.toList(),
+      });
+      print('✅ Updated monitoring service with ${_blockedApps.length} apps');
+    } catch (e) {
+      print('❌ Error updating: $e');
+      // Revert on error
+      setState(() {
+        if (blocked) {
+          _blockedApps.remove(packageName);
+        } else {
+          _blockedApps.add(packageName);
+        }
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _togglingApps.remove(packageName);
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loadingPrefs) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(title: const Text('Select Apps to Block')),
-      body: FutureBuilder(
-        future: AppService.getApps(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final apps = snapshot.data as List<AppInfo>;
-
-          return ListView.builder(
-            itemCount: apps.length,
-            itemBuilder: (context, index) {
-              final app = apps[index];
-              final isBlocked = _blockedApps.contains(app.packageName);
-
-              return ListTile(
-                leading: app.icon != null
-                    ? Image.memory(
-                        app.icon!,
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Icon(
-                            Icons.add_card,
-                            color: Colors.white,
-                          );
-                        },
-                      )
-                    : const Icon(Icons.device_unknown, color: Colors.white),
-                title: Text(
-                  app.name,
-                  style: const TextStyle(color: Colors.white),
-                ),
-                trailing: isBlocked
-                    ? HoldToUnblockButton(
-                        onUnblocked: () async {
-                          await _toggleAppBlocked(app.packageName, false);
-                        },
-                      )
-                    : Switch(
-                        value: isBlocked,
-                        onChanged: (value) {
-                          _toggleAppBlocked(app.packageName, value);
-                        },
-                        activeThumbColor: Colors.redAccent,
-                        inactiveThumbColor: Colors.white,
-                      ),
-              );
-            },
-          );
-        },
+      appBar: AppBar(
+        title: const Text('Select Apps to Block'),
+        backgroundColor: Colors.grey[900],
       ),
+      body: _loadingPrefs
+          ? const Center(child: CircularProgressIndicator())
+          : FutureBuilder<List<AppInfo>>(
+              future: _appsFuture, // Use cached future
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      'Error loading apps: ${snapshot.error}',
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  );
+                }
+
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'No apps found',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  );
+                }
+
+                final apps = snapshot.data!;
+                // Filter out this app and sort alphabetically
+                final userApps =
+                    apps
+                        .where((app) => app.packageName != 'com.example.quit')
+                        .toList()
+                      ..sort(
+                        (a, b) => a.name.toLowerCase().compareTo(
+                          b.name.toLowerCase(),
+                        ),
+                      );
+
+                return ListView.builder(
+                  itemCount: userApps.length,
+                  itemBuilder: (context, index) {
+                    final app = userApps[index];
+                    final isBlocked = _blockedApps.contains(app.packageName);
+                    final isToggling = _togglingApps.contains(app.packageName);
+
+                    return ListTile(
+                      leading: AppIconWidget(app: app),
+                      title: Text(
+                        app.name,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      subtitle: Text(
+                        app.packageName,
+                        style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: isToggling
+                          ? const SizedBox(
+                              width: 80,
+                              height: 40,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : isBlocked
+                          ? HoldToUnblockButton(
+                              onUnblocked: () async {
+                                await _toggleAppBlocked(app.packageName, false);
+                              },
+                            )
+                          : Switch(
+                              value: isBlocked,
+                              onChanged: (value) {
+                                _toggleAppBlocked(app.packageName, value);
+                              },
+                              activeColor: Colors.redAccent,
+                              inactiveThumbColor: Colors.white,
+                            ),
+                    );
+                  },
+                );
+              },
+            ),
+    );
+  }
+}
+
+// Widget to properly display app icons
+class AppIconWidget extends StatelessWidget {
+  final AppInfo app;
+
+  const AppIconWidget({super.key, required this.app});
+
+  @override
+  Widget build(BuildContext context) {
+    if (app.icon != null && app.icon!.isNotEmpty) {
+      return Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.memory(
+            app.icon!,
+            width: 48,
+            height: 48,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return _buildDefaultIcon();
+            },
+          ),
+        ),
+      );
+    }
+    return _buildDefaultIcon();
+  }
+
+  Widget _buildDefaultIcon() {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: Colors.grey[800],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: const Icon(Icons.android, color: Colors.white, size: 32),
     );
   }
 }
@@ -507,6 +385,7 @@ class _HoldToUnblockButtonState extends State<HoldToUnblockButton> {
               if (mounted) {
                 setState(() {
                   _holding = false;
+                  _secondsHeld = 0;
                 });
               }
             });
@@ -529,10 +408,10 @@ class _HoldToUnblockButtonState extends State<HoldToUnblockButton> {
       },
       child: Container(
         width: 80,
-        height: 80,
+        height: 40,
         decoration: BoxDecoration(
-          color: _holding ? Colors.redAccent : Colors.grey,
-          shape: BoxShape.circle,
+          color: _holding ? Colors.redAccent : Colors.grey[700],
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Center(
           child: Text(

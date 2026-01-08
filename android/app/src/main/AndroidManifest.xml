@@ -21,7 +21,9 @@
     <application
         android:label="QUIT"
         android:name="${applicationName}"
+                 android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher">
+ 
         
         <!-- Main Activity -->
         <activity
@@ -55,16 +57,18 @@
                 android:value="App monitoring and blocking" />
         </service>
 
-        <!-- Overlay Service (foreground) -->
-        <service
-            android:name=".OverlayService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="App blocking overlay" />
-        </service>
+       
+        <activity
+    android:name=".BlockingActivity"
+    android:exported="false"
+    android:screenOrientation="portrait"
+    android:showWhenLocked="true"
+    android:turnScreenOn="true"
+    android:excludeFromRecents="true"
+    android:launchMode="singleInstance"
+    android:taskAffinity="">
+</activity>
+
 
         <!-- Flutter embedding version -->
         <meta-data
