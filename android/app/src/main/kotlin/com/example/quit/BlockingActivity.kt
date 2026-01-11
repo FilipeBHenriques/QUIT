@@ -8,6 +8,7 @@ import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.util.Log
 
 class BlockingActivity : FlutterActivity() {
 
@@ -40,7 +41,10 @@ class BlockingActivity : FlutterActivity() {
                 "getBlockedAppInfo" -> {
                     val info = mapOf(
                         "packageName" to intent.getStringExtra("packageName"),
-                        "appName" to intent.getStringExtra("appName")
+                        "appName" to intent.getStringExtra("appName"),
+                        "timeLimit" to intent.getBooleanExtra("timeLimit", false),
+                        "dailyLimitSeconds" to intent.getIntExtra("dailyLimitSeconds", 0),
+                        "remainingSeconds" to intent.getIntExtra("remainingSeconds", 0)
                     )
                     result.success(info)
                 }
@@ -49,15 +53,25 @@ class BlockingActivity : FlutterActivity() {
         }
 
         // Navigation channel to handle going home
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NAVIGATION_CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "goHome" -> {
-                    goToHomeScreen()
-                    result.success(true)
-                }
-                else -> result.notImplemented()
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, NAVIGATION_CHANNEL)
+    .setMethodCallHandler { call, result ->
+    when (call.method) {
+        "goHome" -> {
+            goToHomeScreen()
+            result.success(true)
+        }
+        "launchApp" -> {
+            val packageName = call.argument<String>("packageName")
+            if (packageName != null) {
+                launchApp(packageName)
+                result.success(true)
+            } else {
+                result.error("INVALID_PACKAGE", "Package name is null", null)
             }
         }
+        else -> result.notImplemented()
+    }
+}
 
         // Monitoring channel to update blocked apps
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MONITORING_CHANNEL).setMethodCallHandler { call, result ->
@@ -83,6 +97,23 @@ class BlockingActivity : FlutterActivity() {
             startService(intent)
         }
     }
+
+    private fun launchApp(packageName: String) {
+    try {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            finish() // Close blocking activity
+        } else {
+            Log.e("BlockingActivity", "No launch intent for: $packageName")
+            goToHomeScreen() // Fallback
+        }
+    } catch (e: Exception) {
+        Log.e("BlockingActivity", "Error launching app: $packageName", e)
+        goToHomeScreen() // Fallback
+    }
+}
 
     private fun goToHomeScreen() {
         // Launch the home screen (launcher)

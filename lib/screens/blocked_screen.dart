@@ -1,7 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:installed_apps/app_info.dart';
-import 'package:installed_apps/installed_apps.dart';
+import 'package:quit/usage_timer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BlockedScreen extends StatefulWidget {
@@ -19,12 +19,38 @@ class _BlockedScreenState extends State<BlockedScreen> {
   String? _blockedPackageName;
   String? _appName;
   bool _loading = true;
+  bool _isTimeLimitExceeded = false;
+  int _dailyLimitSeconds = 0;
+  int _initialRemainingSeconds = 0;
+
+  late UsageTimer _usageTimer;
+  Timer? _updateTimer;
 
   @override
   void initState() {
     super.initState();
+    _initializeTimer();
     _loadBlockedAppInfo();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    // Update UI every second for real-time countdown
+    _updateTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      if (mounted) {
+        await _usageTimer.reload(); // Reload from SharedPreferences
+        setState(() {
+          // Check if reset time has arrived
+          if (_usageTimer.shouldReset()) {
+            _handleTimerReset();
+          }
+        });
+      }
+    });
+  }
+
+  Future<void> _initializeTimer() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    _usageTimer = UsageTimer(prefs);
+    await _usageTimer.checkAndResetIfNeeded();
   }
 
   Future<void> _loadBlockedAppInfo() async {
@@ -32,61 +58,79 @@ class _BlockedScreenState extends State<BlockedScreen> {
       final info = await blockedAppChannel.invokeMethod('getBlockedAppInfo');
       final packageName = info['packageName'] as String?;
       final appName = info['appName'] as String?;
+      final timeLimit = info['timeLimit'] as bool? ?? false;
+      final dailyLimit = info['dailyLimitSeconds'] as int? ?? 0;
+      final remaining = info['remainingSeconds'] as int? ?? 0;
 
       setState(() {
         _blockedPackageName = packageName;
         _appName = appName ?? packageName;
+        _isTimeLimitExceeded = timeLimit;
+        _dailyLimitSeconds = dailyLimit;
+        _initialRemainingSeconds = remaining;
         _loading = false;
       });
 
-      print('📦 Blocked app info: $packageName - $appName');
+      print(
+        '📦 Blocked: $packageName (limit: $dailyLimit s, remaining: $remaining s)',
+      );
     } catch (e) {
       print('❌ Error loading blocked app info: $e');
-      setState(() {
-        _loading = false;
-      });
+      setState(() => _loading = false);
     }
   }
 
-  Future<void> _unblockApp() async {
-    if (_blockedPackageName == null) return;
+  Future<void> _handleTimerReset() async {
+    print('🔄 Timer reset detected - closing blocking screen');
+    _closeActivity();
+  }
 
-    print('🟢 Unblock button pressed for: $_blockedPackageName');
+  Future<void> _launchUnblockedApp() async {
+    if (_blockedPackageName == null) {
+      _closeActivity();
+      return;
+    }
 
-    // Remove from blocked apps list
+    print('🚀 Unblocking and launching: $_blockedPackageName');
+
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
     blockedApps.remove(_blockedPackageName);
-
-    // Save
     await prefs.setStringList('blocked_apps', blockedApps);
-    print('🟢 New blocked apps list: $blockedApps');
 
-    // Update the background monitoring service
     try {
       await monitoringChannel.invokeMethod('updateBlockedApps', {
         'blockedApps': blockedApps,
       });
-      print('🟢 Background service updated');
     } catch (e) {
-      print('❌ Error updating background service: $e');
+      print('⚠️ Error updating monitoring: $e');
     }
 
-    // Go to home screen
-    _closeActivity();
+    try {
+      await navigationChannel.invokeMethod('launchApp', {
+        'packageName': _blockedPackageName,
+      });
+    } catch (e) {
+      print('❌ Error launching app: $e');
+      _closeActivity();
+    }
   }
 
   Future<void> _closeActivity() async {
-    print('🔴 Close button pressed - returning to home');
+    print('🔴 Closing blocked screen - going home');
     try {
       await navigationChannel.invokeMethod('goHome');
     } catch (e) {
-      print('❌ Error launching home: $e');
+      print('❌ Error going home: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final timeUntilReset = _usageTimer.timeUntilReset();
+    final remainingFormatted = _usageTimer.remainingFormatted;
+    final dailyLimitFormatted = _usageTimer.formatSeconds(_dailyLimitSeconds);
+
     return PopScope(
       canPop: false,
       child: Scaffold(
@@ -100,7 +144,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Close button at top right
+                        // Close button
                         Align(
                           alignment: Alignment.topRight,
                           child: IconButton(
@@ -113,11 +157,23 @@ class _BlockedScreenState extends State<BlockedScreen> {
                           ),
                         ),
                         const Spacer(),
-                        const Icon(Icons.block, size: 100, color: Colors.red),
+
+                        // Icon
+                        Icon(
+                          Icons.block,
+                          size: 100,
+                          color: _isTimeLimitExceeded
+                              ? Colors.orange
+                              : Colors.red,
+                        ),
                         const SizedBox(height: 32),
-                        const Text(
-                          'App Blocked!',
-                          style: TextStyle(
+
+                        // Title
+                        Text(
+                          _isTimeLimitExceeded
+                              ? 'Time Limit Reached!'
+                              : 'App Blocked!',
+                          style: const TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
@@ -125,6 +181,8 @@ class _BlockedScreenState extends State<BlockedScreen> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 16),
+
+                        // App name
                         Text(
                           _appName ?? _blockedPackageName ?? 'Unknown App',
                           style: const TextStyle(
@@ -134,30 +192,127 @@ class _BlockedScreenState extends State<BlockedScreen> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 48),
-                        const Text(
-                          'This app has been blocked.\nYou cannot access it right now.',
-                          style: TextStyle(fontSize: 16, color: Colors.white60),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 48),
-                        ElevatedButton(
-                          onPressed: _unblockApp,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
+
+                        // TIME LIMIT MODE
+                        if (_isTimeLimitExceeded) ...[
+                          // Daily limit info
+                          Text(
+                            'Daily limit: $dailyLimitFormatted',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[400],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Remaining time display (should be 0:00)
+                          Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 32,
+                              horizontal: 24,
                               vertical: 16,
                             ),
-                          ),
-                          child: const Text(
-                            'Unblock This App',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[900],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.orange,
+                                width: 2,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'Time Remaining',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white60,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  remainingFormatted,
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    color: Colors.orange,
+                                    fontWeight: FontWeight.bold,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 24),
+
+                          // Countdown to reset
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[900],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'Access Restored In',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white60,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _usageTimer.formatDuration(timeUntilReset),
+                                  style: const TextStyle(
+                                    fontSize: 32,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else ...[
+                          // NORMAL BLOCK MODE
+                          const Text(
+                            'This app has been blocked.\nYou cannot access it right now.',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.white60,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 48),
+
+                          ElevatedButton(
+                            onPressed: _launchUnblockedApp,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 32,
+                                vertical: 16,
+                              ),
+                            ),
+                            child: const Text(
+                              'Unblock This App',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+
                         const Spacer(),
                       ],
                     ),
@@ -170,6 +325,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
 
   @override
   void dispose() {
+    _updateTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }

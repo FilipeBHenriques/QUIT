@@ -6,10 +6,12 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.os.*
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.util.*
 import kotlin.concurrent.timer
+import kotlin.math.max
+import android.util.Log
+import android.content.SharedPreferences
 
 class MonitoringService : Service() {
 
@@ -19,25 +21,89 @@ class MonitoringService : Service() {
     private var currentlyBlockedApp: String? = null
     private var lastKnownForegroundApp: String? = null
 
+    // Daily limit vars
+    private var dailyLimitSeconds: Int = 0
+    private var remainingSeconds: Int = 0
+    private var sessionStartTime: Long? = null
+    private var lastSaveTime: Long = 0
+    private val SAVE_INTERVAL_MS = 5000L // Save every 5 seconds
+
     companion object {
         private const val TAG = "MonitoringService"
         private const val NOTIFICATION_ID = 100
         private const val CHANNEL_ID = "monitoring_channel"
+        
+        // Helper to safely read int values from SharedPreferences (handles both Int and Long)
+        private fun SharedPreferences.getIntSafe(key: String, defaultValue: Int): Int {
+            return try {
+                getInt(key, defaultValue)
+            } catch (e: ClassCastException) {
+                // Value stored as Long, convert to Int
+                getLong(key, defaultValue.toLong()).toInt()
+            }
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
+        loadTimerState()
+        checkAndResetTimer()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
         startMonitoring()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        intent?.getStringArrayListExtra("blocked_apps")?.let {
-            cachedBlockedApps.clear()
-            cachedBlockedApps.addAll(it)
-            Log.d(TAG, "📝 Updated blocked apps: $cachedBlockedApps")
+    private fun loadTimerState() {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        // Use safe getter that handles both Int and Long storage
+        dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
+        remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
+    }
+
+    private fun checkAndResetTimer() {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
+
+        if (lastReset > 0) {
+            val hoursSinceReset = (System.currentTimeMillis() - lastReset) / (1000 * 60 * 60)
+            if (hoursSinceReset >= 24) {
+                resetTimer()
+            }
         }
+    }
+
+    private fun resetTimer() {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        remainingSeconds = dailyLimitSeconds
+        prefs.edit()
+            .putInt("flutter.remaining_seconds", remainingSeconds)
+            .putInt("flutter.used_today_seconds", 0)  // Reset used time
+            .remove("flutter.timer_last_reset")  // Clear timestamp - wait for next usage
+            .apply()
+        Log.d(TAG, "⏰ Timer reset: ${remainingSeconds}s available, countdown cleared")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.getStringExtra("action")
+        
+        when (action) {
+            "update_timer" -> {
+                // Timer config updated - reload from preferences
+                val newLimit = intent.getIntExtra("daily_limit_seconds", 0)
+                Log.d(TAG, "⏱️ Timer config update received: $newLimit seconds")
+                loadTimerState()
+                updateNotification()
+            }
+            else -> {
+                // Normal blocked apps update
+                intent?.getStringArrayListExtra("blocked_apps")?.let {
+                    cachedBlockedApps.clear()
+                    cachedBlockedApps.addAll(it)
+                    Log.d(TAG, "📝 Updated blocked apps: $cachedBlockedApps")
+                }
+            }
+        }
+        
         return START_STICKY
     }
 
@@ -45,11 +111,16 @@ class MonitoringService : Service() {
         monitoringTimer?.cancel()
         monitoringTimer = timer(period = 500) {
             try {
+                // Check for foreground app changes
                 val foregroundApp = getCurrentForegroundApp()
                 if (foregroundApp != null && foregroundApp != lastKnownForegroundApp) {
                     lastKnownForegroundApp = foregroundApp
                     handler.post { handleForegroundApp(foregroundApp) }
                 }
+                
+                // Continuously update time tracking if active
+                handler.post { updateTimeTracking() }
+                
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Monitoring error", e)
             }
@@ -59,6 +130,7 @@ class MonitoringService : Service() {
     private fun handleForegroundApp(foregroundApp: String) {
         // Don't block our own app
         if (foregroundApp == packageName) {
+            stopTimeTracking()
             currentlyBlockedApp = null
             return
         }
@@ -66,19 +138,152 @@ class MonitoringService : Service() {
         val isBlocked = cachedBlockedApps.contains(foregroundApp)
         val isDifferentApp = foregroundApp != currentlyBlockedApp
 
-        if (isBlocked && isDifferentApp) {
-            Log.d(TAG, "🚫 Blocking app: $foregroundApp")
-            val intent = Intent(this, BlockingActivity::class.java).apply {
-                putExtra("packageName", foregroundApp)
-                putExtra("appName", getAppLabel(foregroundApp))
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        if (isBlocked) {
+            // THREE CASES:
+            
+            // Case 1: No timer configured - traditional blocking
+            if (dailyLimitSeconds == 0) {
+                if (isDifferentApp) {
+                    stopTimeTracking()
+                    Log.d(TAG, "🚫 Blocking app (no timer): $foregroundApp")
+                    showBlockingScreen(foregroundApp, timeLimit = false)
+                    currentlyBlockedApp = foregroundApp
+                }
             }
-            startActivity(intent)
-            currentlyBlockedApp = foregroundApp
-        } else if (!isBlocked && currentlyBlockedApp != null) {
-            Log.d(TAG, "✅ App no longer blocked")
+            // Case 2: Timer enabled but time exhausted - block with timer message
+            else if (remainingSeconds <= 0) {
+                if (isDifferentApp) {
+                    stopTimeTracking()
+                    Log.d(TAG, "⏱️ Time limit exceeded: $foregroundApp")
+                    showTimeLimitExceededScreen(foregroundApp)
+                    currentlyBlockedApp = foregroundApp
+                }
+            }
+            // Case 3: Timer enabled with time remaining - ALLOW ACCESS + track time
+            else {
+                if (isDifferentApp) {
+                    stopTimeTracking() // Stop any previous tracking
+                    currentlyBlockedApp = foregroundApp
+                    Log.d(TAG, "✅ Allowing access with timer: $foregroundApp (${remainingSeconds}s remaining)")
+                }
+                startTimeTracking() // Track time for this session
+            }
+        } else {
+            // Not a blocked app - stop tracking
+            stopTimeTracking()
             currentlyBlockedApp = null
         }
+    }
+
+    // Helper method for traditional blocking (no timer)
+    private fun showBlockingScreen(foregroundApp: String, timeLimit: Boolean) {
+        val intent = Intent(this, BlockingActivity::class.java).apply {
+            putExtra("packageName", foregroundApp)
+            putExtra("appName", getAppLabel(foregroundApp))
+            putExtra("timeLimit", timeLimit)
+            putExtra("dailyLimitSeconds", dailyLimitSeconds)
+            putExtra("remainingSeconds", remainingSeconds)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        startActivity(intent)
+    }
+
+    private fun showTimeLimitExceededScreen(foregroundApp: String) {
+        Log.d(TAG, "⏱️ Time limit exceeded for: $foregroundApp")
+        val intent = Intent(this, BlockingActivity::class.java).apply {
+            putExtra("packageName", foregroundApp)
+            putExtra("appName", getAppLabel(foregroundApp))
+            putExtra("timeLimit", true)
+            putExtra("dailyLimitSeconds", dailyLimitSeconds)
+            putExtra("remainingSeconds", remainingSeconds)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        startActivity(intent)
+    }
+
+    private fun startTimeTracking() {
+        if (sessionStartTime == null) {
+            sessionStartTime = System.currentTimeMillis()
+            lastSaveTime = System.currentTimeMillis()
+            
+            // IMPORTANT: Start the reset timer on first usage (if not already started)
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
+            if (lastReset == 0L) {
+                prefs.edit()
+                    .putLong("flutter.timer_last_reset", System.currentTimeMillis())
+                    .apply()
+                Log.d(TAG, "⏰ Started reset countdown (first app usage detected)")
+            }
+            
+            Log.d(TAG, "⏱️ Started time tracking. Remaining: ${remainingSeconds}s")
+        }
+    }
+
+    private fun stopTimeTracking() {
+        sessionStartTime?.let { startTime ->
+            val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
+            remainingSeconds = max(0, remainingSeconds - elapsed)
+            
+            // IMPORTANT: Increment used_today_seconds (persistent counter)
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val currentUsed = prefs.getIntSafe("flutter.used_today_seconds", 0)
+            prefs.edit()
+                .putInt("flutter.used_today_seconds", currentUsed + elapsed)
+                .apply()
+            
+            saveTimeState()
+            Log.d(TAG, "⏱️ Stopped tracking. Used: ${elapsed}s, Total used today: ${currentUsed + elapsed}s, Remaining: ${remainingSeconds}s")
+        }
+        sessionStartTime = null
+    }
+
+    private fun updateTimeTracking() {
+        sessionStartTime?.let { startTime ->
+            val currentTime = System.currentTimeMillis()
+            
+            // Check if we should save (every 5 seconds)
+            if (currentTime - lastSaveTime >= SAVE_INTERVAL_MS) {
+                val elapsedSinceSave = ((currentTime - lastSaveTime) / 1000).toInt()
+                remainingSeconds = max(0, remainingSeconds - elapsedSinceSave)
+                
+                // IMPORTANT: Increment used_today_seconds
+                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                val currentUsed = prefs.getIntSafe("flutter.used_today_seconds", 0)
+                prefs.edit()
+                    .putInt("flutter.used_today_seconds", currentUsed + elapsedSinceSave)
+                    .apply()
+                
+                saveTimeState()
+                lastSaveTime = currentTime
+                
+                // Update notification with current remaining time
+                updateNotification()
+            }
+            
+            // Check if time ran out
+            if (remainingSeconds <= 0 && currentlyBlockedApp != null) {
+                stopTimeTracking()
+                handler.post {
+                    currentlyBlockedApp?.let { app ->
+                        showTimeLimitExceededScreen(app)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateNotification() {
+        val notification = createNotification()
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(NOTIFICATION_ID, notification)
+    }
+
+    private fun saveTimeState() {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putInt("flutter.remaining_seconds", remainingSeconds)
+            .apply()
     }
 
     private fun getAppLabel(packageName: String): String {
@@ -99,7 +304,7 @@ class MonitoringService : Service() {
             val event = UsageEvents.Event()
             var mostRecentApp: String? = null
             var mostRecentTime = 0L
-            
+
             while (usageEvents.hasNextEvent()) {
                 usageEvents.getNextEvent(event)
                 if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND ||
@@ -124,7 +329,7 @@ class MonitoringService : Service() {
                 CHANNEL_ID,
                 "App Monitoring",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { 
+            ).apply {
                 description = "Monitors blocked apps in background"
                 setShowBadge(false)
             }
@@ -138,9 +343,18 @@ class MonitoringService : Service() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+        
+        val contentText = if (dailyLimitSeconds > 0) {
+            val minutes = remainingSeconds / 60
+            val seconds = remainingSeconds % 60
+            "Monitoring ${cachedBlockedApps.size} apps | ${minutes}:${seconds.toString().padStart(2, '0')} left"
+        } else {
+            "Monitoring ${cachedBlockedApps.size} blocked apps"
+        }
+        
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("QUIT - App Blocker Active")
-            .setContentText("Monitoring ${cachedBlockedApps.size} blocked apps")
+            .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -151,6 +365,7 @@ class MonitoringService : Service() {
     override fun onBind(intent: Intent?) = null
 
     override fun onDestroy() {
+        stopTimeTracking()
         monitoringTimer?.cancel()
         currentlyBlockedApp = null
         super.onDestroy()

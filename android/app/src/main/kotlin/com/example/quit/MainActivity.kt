@@ -36,6 +36,12 @@ class MainActivity : FlutterActivity() {
                     updateBlockedApps(blockedApps)
                     result.success(true)
                 }
+                "updateTimerConfig" -> {
+                    val dailyLimitSeconds = call.argument<Int>("dailyLimitSeconds") ?: 0
+                    Log.d(TAG, "⏱️ Updating timer config: $dailyLimitSeconds seconds")
+                    updateTimerConfig(dailyLimitSeconds)
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -62,6 +68,18 @@ class MainActivity : FlutterActivity() {
         val intent = Intent(this, MonitoringService::class.java).apply {
             putStringArrayListExtra("blocked_apps", ArrayList(blockedApps))
             putExtra("action", "update")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    private fun updateTimerConfig(dailyLimitSeconds: Int) {
+        val intent = Intent(this, MonitoringService::class.java).apply {
+            putExtra("action", "update_timer")
+            putExtra("daily_limit_seconds", dailyLimitSeconds)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
