@@ -307,7 +307,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                 Slider(
                   value: _dailyLimitMinutes.toDouble(),
                   min: 0,
-                  max: 60,
+                  max: 120,
                   divisions: null,
                   label: _dailyLimitMinutes == 0
                       ? 'Disabled'

@@ -18,7 +18,10 @@ class UsageTimer {
   UsageTimer(
     this._prefs, {
     this.resetInterval = const Duration(hours: 24, minutes: 0, seconds: 0),
-  });
+  }) {
+    // Save reset interval to preferences so MonitoringService can read it
+    _prefs.setInt('reset_interval_seconds', resetInterval.inSeconds);
+  }
 
   // Configuration
   int get dailyLimitSeconds => _prefs.getInt(_keyDailyLimit) ?? 0;

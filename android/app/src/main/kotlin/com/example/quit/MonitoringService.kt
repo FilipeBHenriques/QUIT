@@ -5,6 +5,8 @@ import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.os.*
 import androidx.core.app.NotificationCompat
 import java.util.*
@@ -27,6 +29,10 @@ class MonitoringService : Service() {
     private var sessionStartTime: Long? = null
     private var lastSaveTime: Long = 0
     private val SAVE_INTERVAL_MS = 5000L // Save every 5 seconds
+    
+    // Screen state tracking
+    private var isScreenOn: Boolean = true
+    private var screenStateReceiver: BroadcastReceiver? = null
 
     companion object {
         private const val TAG = "MonitoringService"
@@ -50,7 +56,59 @@ class MonitoringService : Service() {
         checkAndResetTimer()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
+        registerScreenStateReceiver()
         startMonitoring()
+    }
+    
+    private fun registerScreenStateReceiver() {
+        screenStateReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_OFF -> {
+                        Log.d(TAG, "📴 Screen turned OFF - pausing time tracking")
+                        isScreenOn = false
+                        
+                        // Save current session and stop tracking
+                        stopTimeTracking()
+                    }
+                    Intent.ACTION_SCREEN_ON -> {
+                        Log.d(TAG, "📱 Screen turned ON - will check app after unlock completes")
+                        isScreenOn = true
+                        
+                        // Don't check immediately - let the user unlock first
+                        // We'll rely on the normal monitoring loop to detect when they
+                        // actually get past the lock screen to the app
+                    }
+                    Intent.ACTION_USER_PRESENT -> {
+                        // This fires AFTER user unlocks (PIN/pattern/fingerprint/swipe)
+                        Log.d(TAG, "🔓 User unlocked - checking current app")
+                        
+                        // Wait a bit for unlock animation to complete
+                        handler.postDelayed({
+                            val currentApp = getCurrentForegroundApp()
+                            if (currentApp != null && currentApp != packageName) {
+                                Log.d(TAG, "🔍 After unlock, app is: $currentApp")
+                                // Force re-evaluation even if "same" app
+                                lastKnownForegroundApp = null
+                                handleForegroundApp(currentApp)
+                            }
+                        }, 1000) // 1 second delay for animation
+                    }
+                }
+            }
+        }
+        
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        registerReceiver(screenStateReceiver, filter)
+        
+        // Check initial screen state
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        isScreenOn = powerManager.isInteractive
+        Log.d(TAG, "📱 Initial screen state: ${if (isScreenOn) "ON" else "OFF"}")
     }
 
     private fun loadTimerState() {
@@ -63,10 +121,14 @@ class MonitoringService : Service() {
     private fun checkAndResetTimer() {
         val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
+        
+        // Get reset interval from preferences (in seconds)
+        val resetIntervalSeconds = prefs.getIntSafe("flutter.reset_interval_seconds", 86400) // Default 24h
+        val resetIntervalMs = resetIntervalSeconds * 1000L
 
         if (lastReset > 0) {
-            val hoursSinceReset = (System.currentTimeMillis() - lastReset) / (1000 * 60 * 60)
-            if (hoursSinceReset >= 24) {
+            val timeSinceReset = System.currentTimeMillis() - lastReset
+            if (timeSinceReset >= resetIntervalMs) {
                 resetTimer()
             }
         }
@@ -202,6 +264,12 @@ class MonitoringService : Service() {
     }
 
     private fun startTimeTracking() {
+        // Don't start tracking if screen is off
+        if (!isScreenOn) {
+            Log.d(TAG, "⏸️ Screen is OFF - not starting time tracking")
+            return
+        }
+        
         if (sessionStartTime == null) {
             sessionStartTime = System.currentTimeMillis()
             lastSaveTime = System.currentTimeMillis()
@@ -242,13 +310,36 @@ class MonitoringService : Service() {
         sessionStartTime?.let { startTime ->
             val currentTime = System.currentTimeMillis()
             
+            // CRITICAL: Don't count time when screen is off
+            if (!isScreenOn) {
+                return
+            }
+            
+            // CRITICAL: Check if reset should happen BEFORE updating counters
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
+            if (lastReset > 0) {
+                val resetIntervalSeconds = prefs.getIntSafe("flutter.reset_interval_seconds", 86400)
+                val resetIntervalMs = resetIntervalSeconds * 1000L
+                val timeSinceReset = currentTime - lastReset
+                
+                if (timeSinceReset >= resetIntervalMs) {
+                    Log.d(TAG, "⏰ Reset time reached during tracking - triggering reset")
+                    resetTimer()
+                    loadTimerState() // Reload state after reset
+                    // Stop tracking current session since we just reset
+                    sessionStartTime = null
+                    lastSaveTime = 0
+                    return
+                }
+            }
+            
             // Check if we should save (every 5 seconds)
             if (currentTime - lastSaveTime >= SAVE_INTERVAL_MS) {
                 val elapsedSinceSave = ((currentTime - lastSaveTime) / 1000).toInt()
                 remainingSeconds = max(0, remainingSeconds - elapsedSinceSave)
                 
                 // IMPORTANT: Increment used_today_seconds
-                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                 val currentUsed = prefs.getIntSafe("flutter.used_today_seconds", 0)
                 prefs.edit()
                     .putInt("flutter.used_today_seconds", currentUsed + elapsedSinceSave)
@@ -368,6 +459,16 @@ class MonitoringService : Service() {
         stopTimeTracking()
         monitoringTimer?.cancel()
         currentlyBlockedApp = null
+        
+        // Unregister screen state receiver
+        screenStateReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error unregistering screen receiver", e)
+            }
+        }
+        
         super.onDestroy()
     }
 }
