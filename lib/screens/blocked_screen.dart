@@ -23,7 +23,8 @@ class _BlockedScreenState extends State<BlockedScreen> {
   int _dailyLimitSeconds = 0;
   int _initialRemainingSeconds = 0;
 
-  late UsageTimer _usageTimer;
+  UsageTimer? _usageTimer;
+
   Timer? _updateTimer;
 
   @override
@@ -35,11 +36,10 @@ class _BlockedScreenState extends State<BlockedScreen> {
 
     // Update UI every second for real-time countdown
     _updateTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      if (mounted) {
-        await _usageTimer.reload(); // Reload from SharedPreferences
+      if (mounted && _usageTimer != null) {
+        await _usageTimer!.reload();
         setState(() {
-          // Check if reset time has arrived
-          if (_usageTimer.shouldReset()) {
+          if (_usageTimer!.shouldReset()) {
             _handleTimerReset();
           }
         });
@@ -50,7 +50,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
   Future<void> _initializeTimer() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     _usageTimer = UsageTimer(prefs);
-    await _usageTimer.checkAndResetIfNeeded();
+    await _usageTimer?.checkAndResetIfNeeded();
   }
 
   Future<void> _loadBlockedAppInfo() async {
@@ -127,9 +127,10 @@ class _BlockedScreenState extends State<BlockedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final timeUntilReset = _usageTimer.timeUntilReset();
-    final remainingFormatted = _usageTimer.remainingFormatted;
-    final dailyLimitFormatted = _usageTimer.formatSeconds(_dailyLimitSeconds);
+    final timeUntilReset = _usageTimer?.timeUntilReset() ?? Duration.zero;
+    final remainingFormatted = _usageTimer?.remainingFormatted ?? "0:00";
+
+    final dailyLimitFormatted = _usageTimer?.formatSeconds(_dailyLimitSeconds);
 
     return PopScope(
       canPop: false,
@@ -268,7 +269,8 @@ class _BlockedScreenState extends State<BlockedScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  _usageTimer.formatDuration(timeUntilReset),
+                                  _usageTimer?.formatDuration(timeUntilReset) ??
+                                      '',
                                   style: const TextStyle(
                                     fontSize: 32,
                                     color: Colors.white,
