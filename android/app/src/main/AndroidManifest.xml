@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+
+    
     
     <!-- Permissions -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />

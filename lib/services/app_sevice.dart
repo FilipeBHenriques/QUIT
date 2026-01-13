@@ -9,7 +9,7 @@ class AppService {
       // Android: get installed apps
       final installedApps = await InstalledApps.getInstalledApps(
         excludeSystemApps: false, // Only user apps
-        excludeNonLaunchableApps: true, // Only apps that can be launched
+        excludeNonLaunchableApps: false, // Only apps that can be launched
         withIcon: true, // Set to true to include icons
       );
 

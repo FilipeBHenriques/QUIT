@@ -138,8 +138,8 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
   bool _loadingPrefs = true;
   late Future<List<AppInfo>> _appsFuture;
 
-  // Timer & Usage Limit
-  late UsageTimer _usageTimer;
+  // Timer & Usage Limit - CHANGED: Make nullable to handle async initialization
+  UsageTimer? _usageTimer;
   int _dailyLimitMinutes = 0;
   Timer? _pollTimer;
 
@@ -149,26 +149,28 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
     _initializeTimer();
     _loadBlockedApps();
     _appsFuture = InstalledApps.getInstalledApps(
-      excludeSystemApps: true,
+      excludeSystemApps: false, // CHANGED: Include system apps like YouTube
       excludeNonLaunchableApps: true,
       withIcon: true,
     );
 
     // Poll SharedPreferences every second for real-time updates
     _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      await _usageTimer.reload();
+      // CHANGED: Check if timer is initialized before using
+      if (_usageTimer != null) {
+        await _usageTimer!.reload();
 
-      // Check if reset just occurred
-      if (_usageTimer.shouldReset()) {
-        await _usageTimer.resetTimer();
-        print('🔄 Reset detected - refreshing UI');
-      }
+        // Check if reset just occurred
+        if (_usageTimer!.shouldReset()) {
+          await _usageTimer!.resetTimer();
+          print('🔄 Reset detected - refreshing UI');
+        }
 
-      if (mounted) {
-        setState(() {
-          // Triggers rebuild with latest data from SharedPreferences
-          // This includes: used time, remaining time, reset countdown
-        });
+        if (mounted) {
+          setState(() {
+            // Triggers rebuild with latest data from SharedPreferences
+          });
+        }
       }
     });
   }
@@ -182,19 +184,21 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
   Future<void> _initializeTimer() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     _usageTimer = UsageTimer(prefs);
-    await _usageTimer.checkAndResetIfNeeded();
+    await _usageTimer!.checkAndResetIfNeeded();
     if (mounted) {
       setState(() {
-        _dailyLimitMinutes = (_usageTimer.dailyLimitSeconds / 60).round();
+        _dailyLimitMinutes = (_usageTimer!.dailyLimitSeconds / 60).round();
       });
     }
   }
 
   Future<void> _updateDailyLimit(int minutes) async {
+    if (_usageTimer == null) return; // Safety check
+
     print('🔄 Updating daily limit to: $minutes minutes');
 
     // Update limit (preserves used time)
-    await _usageTimer.setDailyLimit(minutes * 60);
+    await _usageTimer!.setDailyLimit(minutes * 60);
 
     if (mounted) {
       setState(() {
@@ -264,7 +268,6 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
       appBar: AppBar(
         title: const Text('Select Apps to Block'),
         backgroundColor: Colors.grey[900],
@@ -344,7 +347,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _usageTimer.usedTodayFormatted,
+                            _usageTimer!.usedTodayFormatted,
                             style: const TextStyle(
                               fontSize: 18,
                               color: Colors.redAccent,
@@ -368,10 +371,10 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _usageTimer.remainingFormatted,
+                            _usageTimer!.remainingFormatted,
                             style: TextStyle(
                               fontSize: 18,
-                              color: _usageTimer.remainingSeconds > 0
+                              color: _usageTimer!.remainingSeconds > 0
                                   ? Colors.greenAccent
                                   : Colors.orange,
                               fontWeight: FontWeight.bold,
@@ -388,7 +391,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
 
                   // Row 2: Resets In
                   Text(
-                    'Resets in: ${_usageTimer.formatTimeUntilReset()}',
+                    'Resets in: ${_usageTimer!.formatTimeUntilReset()}',
                     style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                   ),
                 ],
@@ -418,15 +421,34 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                       }
 
                       if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return const Center(
-                          child: Text(
-                            'No apps found',
-                            style: TextStyle(color: Colors.white),
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'No apps found',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Make sure you have granted the necessary permissions',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ),
                         );
                       }
 
                       final apps = snapshot.data!;
+                      print('📱 Loaded ${apps.length} apps');
+
                       final userApps =
                           apps
                               .where(

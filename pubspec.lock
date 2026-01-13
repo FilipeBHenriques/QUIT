@@ -101,10 +101,10 @@ packages:
     dependency: transitive
     description:
       name: ffi
-      sha256: "289279317b4b16eb2bb7e271abccd4bf84ec9bdcbe999e278a94b804f5630418"
+      sha256: d07d37192dbf97461359c1518788f203b0c9102cfd2c35a716b823741219542c
       url: "https://pub.dev"
     source: hosted
-    version: "2.1.4"
+    version: "2.1.5"
   file:
     dependency: transitive
     description:
@@ -156,10 +156,10 @@ packages:
     dependency: "direct main"
     description:
       name: installed_apps
-      sha256: "19dbde9377f89cf816379d59ba413cf0cea382e63e8d31bebec0f157b967f7c8"
+      sha256: a111e54eb48d84db5680871c25b1d6fbe7d044baf5c262d97d9d18c1b769e196
       url: "https://pub.dev"
     source: hosted
-    version: "2.0.0"
+    version: "2.1.0"
   json_annotation:
     dependency: transitive
     description:

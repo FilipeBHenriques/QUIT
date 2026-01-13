@@ -23,9 +23,7 @@ class MonitoringService : Service() {
     private var currentlyBlockedApp: String? = null
     private var lastKnownForegroundApp: String? = null
 
-    // Daily limit vars
-    private var dailyLimitSeconds: Int = 0
-    private var remainingSeconds: Int = 0
+    // Time tracking state
     private var sessionStartTime: Long? = null
     private var lastSaveTime: Long = 0
     private val SAVE_INTERVAL_MS = 5000L // Save every 5 seconds
@@ -52,8 +50,8 @@ class MonitoringService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        loadTimerState()
-        checkAndResetTimer()
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        checkAndPerformReset(prefs) // Single reset check at startup
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
         registerScreenStateReceiver()
@@ -111,38 +109,33 @@ class MonitoringService : Service() {
         Log.d(TAG, "📱 Initial screen state: ${if (isScreenOn) "ON" else "OFF"}")
     }
 
-    private fun loadTimerState() {
-        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        // Use safe getter that handles both Int and Long storage
-        dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
-        remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
-    }
-
-    private fun checkAndResetTimer() {
-        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
+    // SINGLE SOURCE OF TRUTH: Check and perform reset if needed
+    private fun checkAndPerformReset(prefs: SharedPreferences) {
+        val dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
+        if (dailyLimitSeconds == 0) return // No timer configured
         
-        // Get reset interval from preferences (in seconds)
-        val resetIntervalSeconds = prefs.getIntSafe("flutter.reset_interval_seconds", 86400) // Default 24h
-        val resetIntervalMs = resetIntervalSeconds * 1000L
-
-        if (lastReset > 0) {
-            val timeSinceReset = System.currentTimeMillis() - lastReset
-            if (timeSinceReset >= resetIntervalMs) {
-                resetTimer()
-            }
+        val lastReset = prefs.getLong("flutter.timer_last_reset", 0L)
+        if (lastReset == 0L) {
+            // First time - initialize countdown
+            prefs.edit()
+                .putLong("flutter.timer_last_reset", System.currentTimeMillis())
+                .apply()
+            Log.d(TAG, "⏰ Timer countdown initialized")
+            return
         }
-    }
-
-    private fun resetTimer() {
-        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        remainingSeconds = dailyLimitSeconds
-        prefs.edit()
-            .putInt("flutter.remaining_seconds", remainingSeconds)
-            .putInt("flutter.used_today_seconds", 0)  // Reset used time
-            .remove("flutter.timer_last_reset")  // Clear timestamp - wait for next usage
-            .apply()
-        Log.d(TAG, "⏰ Timer reset: ${remainingSeconds}s available, countdown cleared")
+        
+        val resetIntervalSeconds = prefs.getIntSafe("flutter.reset_interval_seconds", 86400)
+        val resetIntervalMs = resetIntervalSeconds * 1000L
+        val timeSinceReset = System.currentTimeMillis() - lastReset
+        
+        if (timeSinceReset >= resetIntervalMs) {
+            Log.d(TAG, "⏰ 24h timer expired - resetting now!")
+            prefs.edit()
+                .putInt("flutter.remaining_seconds", dailyLimitSeconds)
+                .putInt("flutter.used_today_seconds", 0)
+                .remove("flutter.timer_last_reset")
+                .apply()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -150,10 +143,9 @@ class MonitoringService : Service() {
         
         when (action) {
             "update_timer" -> {
-                // Timer config updated - reload from preferences
+                // Timer config updated - just update notification
                 val newLimit = intent.getIntExtra("daily_limit_seconds", 0)
                 Log.d(TAG, "⏱️ Timer config update received: $newLimit seconds")
-                loadTimerState()
                 updateNotification()
             }
             else -> {
@@ -197,6 +189,16 @@ class MonitoringService : Service() {
             return
         }
 
+        // SINGLE SOURCE OF TRUTH: Always read fresh values from SharedPreferences
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        
+        // Check and perform reset if needed (single place for all reset logic)
+        checkAndPerformReset(prefs)
+        
+        // Read current state (post-reset if it happened)
+        val dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
+        val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
+
         val isBlocked = cachedBlockedApps.contains(foregroundApp)
         val isDifferentApp = foregroundApp != currentlyBlockedApp
 
@@ -208,7 +210,7 @@ class MonitoringService : Service() {
                 if (isDifferentApp) {
                     stopTimeTracking()
                     Log.d(TAG, "🚫 Blocking app (no timer): $foregroundApp")
-                    showBlockingScreen(foregroundApp, timeLimit = false)
+                    showBlockingScreen(foregroundApp, timeLimit = false, dailyLimitSeconds, remainingSeconds)
                     currentlyBlockedApp = foregroundApp
                 }
             }
@@ -217,7 +219,7 @@ class MonitoringService : Service() {
                 if (isDifferentApp) {
                     stopTimeTracking()
                     Log.d(TAG, "⏱️ Time limit exceeded: $foregroundApp")
-                    showTimeLimitExceededScreen(foregroundApp)
+                    showTimeLimitExceededScreen(foregroundApp, dailyLimitSeconds, remainingSeconds)
                     currentlyBlockedApp = foregroundApp
                 }
             }
@@ -228,7 +230,7 @@ class MonitoringService : Service() {
                     currentlyBlockedApp = foregroundApp
                     Log.d(TAG, "✅ Allowing access with timer: $foregroundApp (${remainingSeconds}s remaining)")
                 }
-                startTimeTracking() // Track time for this session
+                startTimeTracking(prefs)
             }
         } else {
             // Not a blocked app - stop tracking
@@ -238,7 +240,7 @@ class MonitoringService : Service() {
     }
 
     // Helper method for traditional blocking (no timer)
-    private fun showBlockingScreen(foregroundApp: String, timeLimit: Boolean) {
+    private fun showBlockingScreen(foregroundApp: String, timeLimit: Boolean, dailyLimitSeconds: Int, remainingSeconds: Int) {
         val intent = Intent(this, BlockingActivity::class.java).apply {
             putExtra("packageName", foregroundApp)
             putExtra("appName", getAppLabel(foregroundApp))
@@ -250,7 +252,7 @@ class MonitoringService : Service() {
         startActivity(intent)
     }
 
-    private fun showTimeLimitExceededScreen(foregroundApp: String) {
+    private fun showTimeLimitExceededScreen(foregroundApp: String, dailyLimitSeconds: Int, remainingSeconds: Int) {
         Log.d(TAG, "⏱️ Time limit exceeded for: $foregroundApp")
         val intent = Intent(this, BlockingActivity::class.java).apply {
             putExtra("packageName", foregroundApp)
@@ -263,7 +265,7 @@ class MonitoringService : Service() {
         startActivity(intent)
     }
 
-    private fun startTimeTracking() {
+    private fun startTimeTracking(prefs: SharedPreferences) {
         // Don't start tracking if screen is off
         if (!isScreenOn) {
             Log.d(TAG, "⏸️ Screen is OFF - not starting time tracking")
@@ -275,7 +277,6 @@ class MonitoringService : Service() {
             lastSaveTime = System.currentTimeMillis()
             
             // IMPORTANT: Start the reset timer on first usage (if not already started)
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
             if (lastReset == 0L) {
                 prefs.edit()
@@ -284,6 +285,7 @@ class MonitoringService : Service() {
                 Log.d(TAG, "⏰ Started reset countdown (first app usage detected)")
             }
             
+            val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
             Log.d(TAG, "⏱️ Started time tracking. Remaining: ${remainingSeconds}s")
         }
     }
@@ -291,17 +293,19 @@ class MonitoringService : Service() {
     private fun stopTimeTracking() {
         sessionStartTime?.let { startTime ->
             val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
-            remainingSeconds = max(0, remainingSeconds - elapsed)
+            
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
+            val newRemaining = max(0, remainingSeconds - elapsed)
             
             // IMPORTANT: Increment used_today_seconds (persistent counter)
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val currentUsed = prefs.getIntSafe("flutter.used_today_seconds", 0)
             prefs.edit()
+                .putInt("flutter.remaining_seconds", newRemaining)
                 .putInt("flutter.used_today_seconds", currentUsed + elapsed)
                 .apply()
             
-            saveTimeState()
-            Log.d(TAG, "⏱️ Stopped tracking. Used: ${elapsed}s, Total used today: ${currentUsed + elapsed}s, Remaining: ${remainingSeconds}s")
+            Log.d(TAG, "⏱️ Stopped tracking. Used: ${elapsed}s, Total used today: ${currentUsed + elapsed}s, Remaining: ${newRemaining}s")
         }
         sessionStartTime = null
     }
@@ -315,49 +319,34 @@ class MonitoringService : Service() {
                 return
             }
             
-            // CRITICAL: Check if reset should happen BEFORE updating counters
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
-            if (lastReset > 0) {
-                val resetIntervalSeconds = prefs.getIntSafe("flutter.reset_interval_seconds", 86400)
-                val resetIntervalMs = resetIntervalSeconds * 1000L
-                val timeSinceReset = currentTime - lastReset
-                
-                if (timeSinceReset >= resetIntervalMs) {
-                    Log.d(TAG, "⏰ Reset time reached during tracking - triggering reset")
-                    resetTimer()
-                    loadTimerState() // Reload state after reset
-                    // Stop tracking current session since we just reset
-                    sessionStartTime = null
-                    lastSaveTime = 0
-                    return
-                }
-            }
             
             // Check if we should save (every 5 seconds)
             if (currentTime - lastSaveTime >= SAVE_INTERVAL_MS) {
                 val elapsedSinceSave = ((currentTime - lastSaveTime) / 1000).toInt()
-                remainingSeconds = max(0, remainingSeconds - elapsedSinceSave)
+                val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
+                val newRemaining = max(0, remainingSeconds - elapsedSinceSave)
                 
                 // IMPORTANT: Increment used_today_seconds
                 val currentUsed = prefs.getIntSafe("flutter.used_today_seconds", 0)
                 prefs.edit()
+                    .putInt("flutter.remaining_seconds", newRemaining)
                     .putInt("flutter.used_today_seconds", currentUsed + elapsedSinceSave)
                     .apply()
                 
-                saveTimeState()
                 lastSaveTime = currentTime
                 
                 // Update notification with current remaining time
                 updateNotification()
-            }
-            
-            // Check if time ran out
-            if (remainingSeconds <= 0 && currentlyBlockedApp != null) {
-                stopTimeTracking()
-                handler.post {
-                    currentlyBlockedApp?.let { app ->
-                        showTimeLimitExceededScreen(app)
+                
+                // Check if time ran out
+                if (newRemaining <= 0 && currentlyBlockedApp != null) {
+                    stopTimeTracking()
+                    handler.post {
+                        currentlyBlockedApp?.let { app ->
+                            val dailyLimit = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
+                            showTimeLimitExceededScreen(app, dailyLimit, newRemaining)
+                        }
                     }
                 }
             }
@@ -368,13 +357,6 @@ class MonitoringService : Service() {
         val notification = createNotification()
         val notificationManager = getSystemService(NotificationManager::class.java)
         notificationManager.notify(NOTIFICATION_ID, notification)
-    }
-
-    private fun saveTimeState() {
-        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        prefs.edit()
-            .putInt("flutter.remaining_seconds", remainingSeconds)
-            .apply()
     }
 
     private fun getAppLabel(packageName: String): String {
@@ -434,6 +416,11 @@ class MonitoringService : Service() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+        
+        // Read current values from SharedPreferences
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
+        val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
         
         val contentText = if (dailyLimitSeconds > 0) {
             val minutes = remainingSeconds / 60
