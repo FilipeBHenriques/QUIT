@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/blocked_screen.dart';
 import 'screens/apps_tab.dart';
 import 'screens/websites_tab.dart';
+import 'screens/blackjack_screen.dart';
+import 'screens/roulette_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -137,29 +139,95 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
-        child: GestureDetector(
-          onTap: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const BlockingSelectionScreen(),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Main settings button
+            GestureDetector(
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const BlockingSelectionScreen(),
+                  ),
+                );
+                // Sync services when returning from settings
+                _syncServicesIfNeeded();
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 100),
+                width: 150,
+                height: 150,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)],
+                ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.block, size: 80, color: Colors.black),
               ),
-            );
-            // Sync services when returning from settings
-            _syncServicesIfNeeded();
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            width: 150,
-            height: 150,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)],
             ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.block, size: 80, color: Colors.black),
-          ),
+
+            const SizedBox(height: 40),
+
+            // Game buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Blackjack button
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const BlackjackScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.casino, size: 24),
+                  label: const Text(
+                    'Blackjack',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 16),
+
+                // Roulette button
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const RouletteScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.album, size: 24),
+                  label: const Text(
+                    'Roulette',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red[900],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
