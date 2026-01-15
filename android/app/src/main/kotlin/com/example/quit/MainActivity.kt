@@ -3,13 +3,20 @@ package com.example.quit
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import android.provider.Settings
+import android.app.AppOpsManager
+import android.content.Context
+import android.net.Uri
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.os.PowerManager
 
 class MainActivity : FlutterActivity() {
 
     private val MONITORING_CHANNEL = "com.quit.app/monitoring"
+    private val USAGE_ACCESS_REQUEST_CODE = 1001
+    private val OVERLAY_PERMISSION_REQUEST_CODE = 1002
 
     companion object {
         private const val TAG = "MainActivity"
@@ -17,6 +24,9 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Check and request permissions on startup
+        checkAndRequestPermissions()
 
         // Monitoring channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MONITORING_CHANNEL).setMethodCallHandler { call, result ->
@@ -47,6 +57,139 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun checkAndRequestPermissions() {
+        // Check all required permissions
+        val hasUsageAccess = checkUsageStatsPermission()
+        val hasOverlayPermission = checkOverlayPermission()
+        val hasBatteryOptimization = checkBatteryOptimization()
+
+        Log.d(TAG, "🔍 Permission check:")
+        Log.d(TAG, "   Usage Access: $hasUsageAccess")
+        Log.d(TAG, "   Overlay: $hasOverlayPermission")
+        Log.d(TAG, "   Battery Optimization: $hasBatteryOptimization")
+
+        // Silently redirect to settings if permissions missing
+        if (!hasUsageAccess) {
+            requestUsageAccessPermission()
+        } else if (!hasOverlayPermission) {
+            requestOverlayPermission()
+        } else if (!hasBatteryOptimization) {
+            requestBatteryOptimization()
+        }
+    }
+
+    // ============= USAGE ACCESS PERMISSION =============
+    private fun checkUsageStatsPermission(): Boolean {
+        return try {
+            val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+            val mode = appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(),
+                packageName
+            )
+            mode == AppOpsManager.MODE_ALLOWED
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking usage stats permission", e)
+            false
+        }
+    }
+
+    private fun requestUsageAccessPermission() {
+        try {
+            Log.d(TAG, "📱 Opening Usage Access settings...")
+            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            startActivityForResult(intent, USAGE_ACCESS_REQUEST_CODE)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening usage access settings", e)
+        }
+    }
+
+    // ============= OVERLAY PERMISSION =============
+    private fun checkOverlayPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Settings.canDrawOverlays(this)
+        } else {
+            true
+        }
+    }
+
+    private fun requestOverlayPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                Log.d(TAG, "📱 Opening Overlay permission settings...")
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+                startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST_CODE)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error opening overlay settings", e)
+            }
+        }
+    }
+
+    // ============= BATTERY OPTIMIZATION =============
+    private fun checkBatteryOptimization(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            powerManager.isIgnoringBatteryOptimizations(packageName)
+        } else {
+            true
+        }
+    }
+
+    private fun requestBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                Log.d(TAG, "📱 Opening Battery Optimization settings...")
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error opening battery optimization settings", e)
+            }
+        }
+    }
+
+    // ============= ACTIVITY RESULT HANDLING =============
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        
+        when (requestCode) {
+            USAGE_ACCESS_REQUEST_CODE -> {
+                if (checkUsageStatsPermission()) {
+                    Log.d(TAG, "✅ Usage Access permission granted!")
+                    // Check next permission
+                    if (!checkOverlayPermission()) {
+                        requestOverlayPermission()
+                    }
+                } else {
+                    Log.w(TAG, "⚠️ Usage Access permission NOT granted")
+                }
+            }
+            OVERLAY_PERMISSION_REQUEST_CODE -> {
+                if (checkOverlayPermission()) {
+                    Log.d(TAG, "✅ Overlay permission granted!")
+                    // Check next permission
+                    if (!checkBatteryOptimization()) {
+                        requestBatteryOptimization()
+                    }
+                } else {
+                    Log.w(TAG, "⚠️ Overlay permission NOT granted")
+                }
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-check permissions when app resumes
+        val hasUsageAccess = checkUsageStatsPermission()
+        Log.d(TAG, "📱 App resumed. Usage Access: $hasUsageAccess")
+    }
+
+    // ============= SERVICE MANAGEMENT =============
     private fun startMonitoringService(blockedApps: List<String>) {
         val intent = Intent(this, MonitoringService::class.java).apply {
             putStringArrayListExtra("blocked_apps", ArrayList(blockedApps))
