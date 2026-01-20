@@ -160,6 +160,11 @@ class BlockingActivity : FlutterActivity() {
     }
 
     override fun getInitialRoute(): String {
-        return "/blocked"
+        // Determine which screen to show based on the screenType extra
+        val screenType = intent.getStringExtra("screenType")
+        return when (screenType) {
+            "first_time_gamble" -> "/first_time_gamble"
+            else -> "/blocked"
+        }
     }
 }

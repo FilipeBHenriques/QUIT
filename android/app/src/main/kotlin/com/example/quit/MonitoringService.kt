@@ -116,11 +116,9 @@ class MonitoringService : Service() {
         
         val lastReset = prefs.getLong("flutter.timer_last_reset", 0L)
         if (lastReset == 0L) {
-            // First time - initialize countdown
-            prefs.edit()
-                .putLong("flutter.timer_last_reset", System.currentTimeMillis())
-                .apply()
-            Log.d(TAG, "⏰ Timer countdown initialized")
+            // First time - DON'T initialize countdown yet
+            // Wait for user to make a choice on first-time gamble screen
+            Log.d(TAG, "⏰ Timer not started yet - waiting for first choice")
             return
         }
         
@@ -134,6 +132,7 @@ class MonitoringService : Service() {
                 .putInt("flutter.remaining_seconds", dailyLimitSeconds)
                 .putInt("flutter.used_today_seconds", 0)
                 .remove("flutter.timer_last_reset")
+                .remove("flutter.timer_first_choice_made") // Clear choice flag for new cycle
                 .apply()
         }
     }
@@ -223,14 +222,26 @@ class MonitoringService : Service() {
                     currentlyBlockedApp = foregroundApp
                 }
             }
-            // Case 3: Timer enabled with time remaining - ALLOW ACCESS + track time
+            // Case 3: Timer enabled with time remaining - Check if first time
             else {
-                if (isDifferentApp) {
-                    stopTimeTracking() // Stop any previous tracking
+                val lastResetTimestamp = prefs.getLong("flutter.timer_last_reset", 0)
+                val isFirstTimeAccess = (lastResetTimestamp == 0L)
+                
+                if (isFirstTimeAccess && isDifferentApp) {
+                    // FIRST TIME: Show gamble offer screen
+                    stopTimeTracking()
                     currentlyBlockedApp = foregroundApp
-                    Log.d(TAG, "✅ Allowing access with timer: $foregroundApp (${remainingSeconds}s remaining)")
+                    Log.d(TAG, "🎰 First time access - showing gamble offer: $foregroundApp")
+                    showFirstTimeGambleScreen(foregroundApp, dailyLimitSeconds, remainingSeconds)
+                } else {
+                    // SUBSEQUENT ACCESS: Allow normally + track time
+                    if (isDifferentApp) {
+                        stopTimeTracking()
+                        currentlyBlockedApp = foregroundApp
+                        Log.d(TAG, "✅ Allowing access with timer: $foregroundApp (${remainingSeconds}s remaining)")
+                    }
+                    startTimeTracking(prefs)
                 }
-                startTimeTracking(prefs)
             }
         } else {
             // Not a blocked app - stop tracking
@@ -247,6 +258,7 @@ class MonitoringService : Service() {
             putExtra("timeLimit", timeLimit)
             putExtra("dailyLimitSeconds", dailyLimitSeconds)
             putExtra("remainingSeconds", remainingSeconds)
+            putExtra("screenType", "blocking")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         startActivity(intent)
@@ -260,6 +272,22 @@ class MonitoringService : Service() {
             putExtra("timeLimit", true)
             putExtra("dailyLimitSeconds", dailyLimitSeconds)
             putExtra("remainingSeconds", remainingSeconds)
+            putExtra("screenType", "time_limit_exceeded")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        startActivity(intent)
+    }
+
+    // NEW: Show first-time gamble offer screen
+    private fun showFirstTimeGambleScreen(foregroundApp: String, dailyLimitSeconds: Int, remainingSeconds: Int) {
+        Log.d(TAG, "🎰 Showing first-time gamble screen for: $foregroundApp")
+        val intent = Intent(this, BlockingActivity::class.java).apply {
+            putExtra("packageName", foregroundApp)
+            putExtra("appName", getAppLabel(foregroundApp))
+            putExtra("timeLimit", true)
+            putExtra("dailyLimitSeconds", dailyLimitSeconds)
+            putExtra("remainingSeconds", remainingSeconds)
+            putExtra("screenType", "first_time_gamble")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         startActivity(intent)
@@ -276,13 +304,20 @@ class MonitoringService : Service() {
             sessionStartTime = System.currentTimeMillis()
             lastSaveTime = System.currentTimeMillis()
             
-            // IMPORTANT: Start the reset timer on first usage (if not already started)
-            val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
-            if (lastReset == 0L) {
-                prefs.edit()
-                    .putLong("flutter.timer_last_reset", System.currentTimeMillis())
-                    .apply()
-                Log.d(TAG, "⏰ Started reset countdown (first app usage detected)")
+            // IMPORTANT: Only start the reset timer if user came from first-time gamble screen
+            // Check if they've made a choice (timer_first_choice_made flag)
+            val hasNmadeChoice = prefs.getBoolean("flutter.timer_first_choice_made", false)
+            
+            if (hasNmadeChoice) {
+                // User already made their choice - timer should already be running
+                val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
+                if (lastReset == 0L) {
+                    // Shouldn't happen, but safety check
+                    prefs.edit()
+                        .putLong("flutter.timer_last_reset", System.currentTimeMillis())
+                        .apply()
+                    Log.d(TAG, "⏰ Started reset countdown (safety fallback)")
+                }
             }
             
             val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)

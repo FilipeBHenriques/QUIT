@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/blocked_screen.dart';
+import 'screens/gamble_screen.dart';
 import 'screens/apps_tab.dart';
 import 'screens/websites_tab.dart';
 import 'screens/blackjack_screen.dart';
@@ -67,7 +68,10 @@ class QuitApp extends StatelessWidget {
         ),
       ),
       home: const HomeScreen(),
-      routes: {'/blocked': (context) => const BlockedScreen()},
+      routes: {
+        '/blocked': (context) => const BlockedScreen(),
+        '/first_time_gamble': (context) => const FirstTimeGambleScreen(),
+      },
     );
   }
 }

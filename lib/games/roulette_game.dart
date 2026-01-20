@@ -2,6 +2,9 @@ import 'package:flame/game.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'dart:async';
+import 'package:quit/game_result.dart';
+
 import 'roulette_constants.dart';
 import 'roulette_wheel.dart';
 
@@ -10,15 +13,33 @@ import 'roulette_wheel.dart';
 // ============================================================================
 
 class RouletteGame extends FlameGame {
+  // Callback when game is complete
+  final Function(GameResult)? onGameComplete;
+
+  // Callback when bet changes
+  final Function(BetType?)? onBetChanged;
+
+  // Bet amount (full time remaining)
+  final int betAmount;
+
+  RouletteGame({
+    this.onGameComplete,
+    this.onBetChanged,
+    required this.betAmount,
+  });
+
   // Game state
   BetType? currentBet;
   bool isSpinning = false;
   int? lastWinningNumber;
   String resultMessage = '';
 
+  // Stream for messages (to show in UI)
+  final _messageController = StreamController<String>.broadcast();
+  Stream<String> get messageStream => _messageController.stream;
+
   // Components
   late RouletteWheel wheel;
-  late TextComponent messageText;
   late TextComponent winningNumberText;
   late TextComponent betText;
 
@@ -35,7 +56,7 @@ class RouletteGame extends FlameGame {
   }
 
   void _initializeWheel() {
-    final wheelCenter = Vector2(size.x / 2, 220);
+    final wheelCenter = Vector2(size.x * 0.5, size.y * 0.35); // 50% x, 35% y
 
     wheel = RouletteWheel(
       position: wheelCenter,
@@ -45,10 +66,10 @@ class RouletteGame extends FlameGame {
   }
 
   void _initializeUI() {
-    // Current bet display
+    // Current bet display - top
     betText = TextComponent(
       text: 'SELECT A BET',
-      position: Vector2(size.x / 2, 50),
+      position: Vector2(size.x * 0.5, size.y * 0.80), // 50% x, 8% y
       anchor: Anchor.center,
       textRenderer: TextPaint(
         style: const TextStyle(
@@ -61,33 +82,10 @@ class RouletteGame extends FlameGame {
     );
     add(betText);
 
-    // Message text
-    messageText = TextComponent(
-      text: RouletteText.placeBets,
-      position: Vector2(size.x / 2, 450),
-      anchor: Anchor.center,
-      textRenderer: TextPaint(
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 20,
-          fontWeight: FontWeight.w300,
-          letterSpacing: 4,
-          shadows: [
-            Shadow(
-              color: Colors.white.withOpacity(0.5),
-              offset: Offset.zero,
-              blurRadius: RouletteConstants.glowBlur,
-            ),
-          ],
-        ),
-      ),
-    );
-    add(messageText);
-
-    // Winning number display
+    // Winning number display - center
     winningNumberText = TextComponent(
       text: '',
-      position: Vector2(size.x / 2, 90),
+      position: Vector2(size.x * 0.5, size.y * 0.70), // Center
       anchor: Anchor.center,
       textRenderer: TextPaint(
         style: const TextStyle(
@@ -113,6 +111,10 @@ class RouletteGame extends FlameGame {
     resultMessage = '';
 
     _updateUI();
+
+    // Notify UI of bet change
+    onBetChanged?.call(betType);
+    _setMessage('');
   }
 
   void clearBet() {
@@ -124,6 +126,10 @@ class RouletteGame extends FlameGame {
 
     _updateUI();
     winningNumberText.text = '';
+
+    // Notify UI of bet cleared
+    onBetChanged?.call(null);
+    _setMessage('');
   }
 
   // ============================================================================
@@ -158,15 +164,34 @@ class RouletteGame extends FlameGame {
     // Check if bet won
     final won = currentBet!.numbers.contains(lastWinningNumber);
 
+    // Calculate time change based on bet amount
+    final int timeChange;
     if (won) {
+      // Win: Get back bet + payout based on bet type odds
+      final payout = (betAmount * currentBet!.payout).toInt();
+      timeChange = payout; // Net gain
       resultMessage = '${RouletteText.winner} ${currentBet!.name}!';
-      _setMessage(resultMessage);
     } else {
+      // Lose: Lose the bet amount
+      timeChange = -betAmount;
       resultMessage = 'LOSE - ${currentBet!.name}';
-      _setMessage(resultMessage);
     }
 
+    _setMessage(resultMessage);
     isSpinning = false;
+
+    // Create game result and send to callback
+    final result = GameResult(
+      won: won,
+      timeChange: timeChange,
+      gameName: 'Roulette',
+      resultMessage: resultMessage,
+    );
+
+    // Wait a bit before returning result so user can see the outcome
+    Future.delayed(const Duration(seconds: 2), () {
+      onGameComplete?.call(result);
+    });
   }
 
   void _showWinningNumber(int number) {
@@ -211,21 +236,17 @@ class RouletteGame extends FlameGame {
           letterSpacing: 3,
         ),
       );
-    } else {
-      betText.text = 'BET: ${currentBet!.name.toUpperCase()}';
-      betText.textRenderer = TextPaint(
-        style: const TextStyle(
-          color: Colors.greenAccent,
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
-          letterSpacing: 3,
-        ),
-      );
     }
   }
 
   void _setMessage(String text) {
-    messageText.text = text;
+    _messageController.add(text);
+  }
+
+  @override
+  void onRemove() {
+    _messageController.close();
+    super.onRemove();
   }
 
   // ============================================================================

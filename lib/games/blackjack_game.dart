@@ -4,29 +4,30 @@ import 'package:flame/events.dart';
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'dart:ui' as ui;
+import 'package:quit/game_result.dart';
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
 // ============================================================================
 
 class GameConstants {
-  // Card dimensions
+  // Card dimensions (could even make these responsive too)
   static const double cardWidth = 80.0;
   static const double cardHeight = 112.0;
   static const double cardRadius = 8.0;
 
-  // Layout
-  static const double cardSpacing = 75.0;
-  static const double deckX = 20.0;
-  static const double deckCenterY = 0.5; // Ratio of screen height
+  // Layout - all as ratios of screen size
+  static const double cardSpacing = 75.0; // or make this ratio-based too
+  static const double deckXRatio = 0.95; // 5% from left edge
+  static const double deckCenterYRatio = 0.5; // 50% down
 
-  // Positioning (ratios of screen size)
-  static const double dealerCardsY = 120.0;
-  static const double playerCardsY = 450.0;
-  static const double dealerLabelY = 50.0;
-  static const double playerLabelY = 400.0;
-  static const double dealerScoreY = 75.0;
-  static const double playerScoreY = 425.0;
+  // Positioning as ratios (0.0 to 1.0)
+  static const double dealerCardsYRatio = 0.25; // 20% from top
+  static const double playerCardsYRatio = 0.80; // 75% from top
+  static const double dealerLabelYRatio = 0.05; // 8% from top
+  static const double playerLabelYRatio = 0.67; // 67% from top
+  static const double dealerScoreYRatio = 0.125;
+  static const double playerScoreYRatio = 0.70;
 
   // Game rules
   static const int deckShuffleThreshold = 15; // Reshuffle when < 15 cards
@@ -92,6 +93,14 @@ class CardDeck {
 // ============================================================================
 
 class BlackjackGame extends FlameGame with TapCallbacks {
+  // Callback when game is complete
+  final Function(GameResult)? onGameComplete;
+
+  // Bet amount (full time remaining)
+  final int betAmount;
+
+  BlackjackGame({this.onGameComplete, required this.betAmount});
+
   // Game state
   final List<PlayingCard> dealerCards = [];
   final List<PlayingCard> playerCards = [];
@@ -112,14 +121,16 @@ class BlackjackGame extends FlameGame with TapCallbacks {
   final List<Spotlight> spotlights = [];
 
   // Computed positions
-  Vector2 get deckPosition =>
-      Vector2(GameConstants.deckX, size.y * GameConstants.deckCenterY);
+  Vector2 get deckPosition => Vector2(
+    GameConstants.deckXRatio,
+    size.y * GameConstants.deckCenterYRatio,
+  );
 
   Vector2 get dealerCardStart =>
-      Vector2(size.x / 2 - 140, GameConstants.dealerCardsY);
+      Vector2(size.x / 2 - 140, size.y * GameConstants.dealerCardsYRatio);
 
   Vector2 get playerCardStart =>
-      Vector2(size.x / 2 - 140, GameConstants.playerCardsY);
+      Vector2(size.x / 2 - 140, size.y * GameConstants.playerCardsYRatio);
 
   // ============================================================================
   // INITIALIZATION
@@ -151,24 +162,24 @@ class BlackjackGame extends FlameGame with TapCallbacks {
     // Labels
     dealerLabelText = _createLabel(
       GameText.dealer,
-      Vector2(size.x / 2, GameConstants.dealerLabelY),
+      Vector2(size.x / 2, size.y * GameConstants.dealerLabelYRatio),
     );
     add(dealerLabelText);
 
     playerLabelText = _createLabel(
       GameText.player,
-      Vector2(size.x / 2, GameConstants.playerLabelY),
+      Vector2(size.x / 2, size.y * GameConstants.playerLabelYRatio),
     );
     add(playerLabelText);
 
     // Scores
     dealerScoreText = _createScoreText(
-      Vector2(size.x / 2, GameConstants.dealerScoreY),
+      Vector2(size.x / 2, size.y * GameConstants.dealerScoreYRatio),
     );
     add(dealerScoreText);
 
     playerScoreText = _createScoreText(
-      Vector2(size.x / 2, GameConstants.playerScoreY),
+      Vector2(size.x / 2, size.y * GameConstants.playerScoreYRatio),
     );
     add(playerScoreText);
 
@@ -349,47 +360,51 @@ class BlackjackGame extends FlameGame with TapCallbacks {
   // ============================================================================
 
   void hit() {
-    if (!playerTurn || !gameStarted) return;
+    if (!gameStarted || !playerTurn) return;
 
     _dealCard(playerCards, playerCardStart);
 
-    Future.delayed(const Duration(milliseconds: 400), () {
-      if (_calculateScore(playerCards) > GameConstants.blackjackScore) {
+    Future.delayed(const Duration(milliseconds: 500), () {
+      final score = _calculateScore(playerCards);
+
+      if (score > GameConstants.blackjackScore) {
         _endGame(GameText.bust);
       }
     });
   }
 
   void stand() {
-    if (!playerTurn || !gameStarted) return;
+    if (!gameStarted || !playerTurn) return;
 
     playerTurn = false;
+    _revealDealerCard();
 
-    if (dealerCards.isNotEmpty) {
-      dealerCards.last.flipCard();
-    }
-
-    Future.delayed(const Duration(milliseconds: 600), () {
-      _updateScores();
-      _dealerPlay();
-    });
+    Future.delayed(const Duration(milliseconds: 800), _dealerPlay);
   }
 
-  void _dealerPlay() {
-    void dealNext() {
-      if (_calculateScore(dealerCards) < GameConstants.dealerStandThreshold) {
-        _dealCard(dealerCards, dealerCardStart);
-        Future.delayed(const Duration(milliseconds: 600), dealNext);
-      } else {
-        Future.delayed(const Duration(milliseconds: 400), _determineWinner);
+  void _revealDealerCard() {
+    for (var card in dealerCards) {
+      if (card.isFaceDown) {
+        card.flipCard();
       }
     }
 
-    dealNext();
+    Future.delayed(const Duration(milliseconds: 500), _updateScores);
+  }
+
+  void _dealerPlay() {
+    final dealerScore = _calculateScore(dealerCards);
+
+    if (dealerScore < GameConstants.dealerStandThreshold) {
+      _dealCard(dealerCards, dealerCardStart);
+      Future.delayed(const Duration(milliseconds: 800), _dealerPlay);
+    } else {
+      Future.delayed(const Duration(milliseconds: 600), _determineWinner);
+    }
   }
 
   // ============================================================================
-  // SCORING & GAME LOGIC
+  // SCORING
   // ============================================================================
 
   int _calculateScore(List<PlayingCard> hand) {
@@ -442,6 +457,33 @@ class BlackjackGame extends FlameGame with TapCallbacks {
     gameStarted = false;
     playerTurn = false;
     _setMessage(message);
+
+    // Calculate result and send to callback
+    final won = message == GameText.youWin || message == GameText.blackjack;
+    final push = message == GameText.push;
+
+    int timeChange;
+    if (push) {
+      timeChange = 0; // No change on push
+    } else if (won) {
+      // Win: 2x payout (get bet back + winnings)
+      timeChange = betAmount; // Net gain = bet amount
+    } else {
+      // Loss: Lose bet
+      timeChange = -betAmount;
+    }
+
+    final result = GameResult(
+      won: won || push, // Push counts as "won" for positive display
+      timeChange: timeChange,
+      gameName: 'Blackjack',
+      resultMessage: message,
+    );
+
+    // Wait a bit before returning result so user can see the outcome
+    Future.delayed(const Duration(seconds: 2), () {
+      onGameComplete?.call(result);
+    });
   }
 
   // ============================================================================
@@ -505,20 +547,13 @@ class BlackjackGame extends FlameGame with TapCallbacks {
 
   @override
   void render(Canvas canvas) {
-    _renderBackground(canvas);
-    _renderVignette(canvas);
-    _renderDivider(canvas);
-    super.render(canvas);
-  }
-
-  void _renderBackground(Canvas canvas) {
+    // Pure black background
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.x, size.y),
       Paint()..color = Colors.black,
     );
-  }
 
-  void _renderVignette(Canvas canvas) {
+    // Vignette
     final vignette = RadialGradient(
       center: Alignment.center,
       radius: 1.0,
@@ -535,19 +570,8 @@ class BlackjackGame extends FlameGame with TapCallbacks {
       Paint()
         ..shader = vignette.createShader(Rect.fromLTWH(0, 0, size.x, size.y)),
     );
-  }
 
-  void _renderDivider(Canvas canvas) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.1)
-      ..strokeWidth = 1
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5);
-
-    canvas.drawLine(
-      Offset(40, size.y / 2),
-      Offset(size.x - 40, size.y / 2),
-      paint,
-    );
+    super.render(canvas);
   }
 }
 
@@ -557,7 +581,7 @@ class BlackjackGame extends FlameGame with TapCallbacks {
 
 class Spotlight extends PositionComponent {
   final double radius;
-  double _pulse = 0;
+  double _pulse = 0.0;
 
   Spotlight(Vector2 position, this.radius) : super(position: position);
 
