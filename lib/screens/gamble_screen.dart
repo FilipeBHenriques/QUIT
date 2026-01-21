@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:quit/game_result.dart';
 import 'blackjack_screen.dart';
 import 'roulette_screen.dart';
+import 'mines_screen.dart';
 import 'game_result_screen.dart';
 
 class FirstTimeGambleScreen extends StatefulWidget {
@@ -186,30 +187,33 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                 const SizedBox(height: 24),
 
                 // Game buttons
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  alignment: WrapAlignment.center,
                   children: [
                     // Blackjack
-                    Expanded(
+                    SizedBox(
+                      width: 110,
                       child: ElevatedButton(
                         onPressed: () =>
                             _goToGambleGame(const BlackjackScreen()),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green[700],
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 20),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
                         child: const Column(
                           children: [
-                            Icon(Icons.casino, size: 32),
-                            SizedBox(height: 8),
+                            Icon(Icons.casino, size: 28),
+                            SizedBox(height: 6),
                             Text(
                               'Blackjack',
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: 13,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -218,29 +222,57 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                       ),
                     ),
 
-                    const SizedBox(width: 16),
-
                     // Roulette
-                    Expanded(
+                    SizedBox(
+                      width: 110,
                       child: ElevatedButton(
                         onPressed: () =>
                             _goToGambleGame(const RouletteScreen()),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red[900],
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 20),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
                         child: const Column(
                           children: [
-                            Icon(Icons.album, size: 32),
-                            SizedBox(height: 8),
+                            Icon(Icons.album, size: 28),
+                            SizedBox(height: 6),
                             Text(
                               'Roulette',
                               style: TextStyle(
-                                fontSize: 16,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Mines
+                    SizedBox(
+                      width: 110,
+                      child: ElevatedButton(
+                        onPressed: () => _goToGambleGame(const MinesScreen()),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey[850],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(Icons.grid_on, size: 28),
+                            SizedBox(height: 6),
+                            Text(
+                              'Mines',
+                              style: TextStyle(
+                                fontSize: 13,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),

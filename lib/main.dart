@@ -8,6 +8,7 @@ import 'screens/apps_tab.dart';
 import 'screens/websites_tab.dart';
 import 'screens/blackjack_screen.dart';
 import 'screens/roulette_screen.dart';
+import 'screens/mines_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -175,8 +176,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(height: 40),
 
             // Game buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              alignment: WrapAlignment.center,
               children: [
                 // Blackjack button
                 ElevatedButton.icon(
@@ -203,8 +206,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                 ),
 
-                const SizedBox(width: 16),
-
                 // Roulette button
                 ElevatedButton.icon(
                   onPressed: () {
@@ -222,6 +223,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red[900],
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
+                  ),
+                ),
+
+                // Mines button
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MinesScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.grid_on, size: 24),
+                  label: const Text(
+                    'Mines',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey[850],
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
