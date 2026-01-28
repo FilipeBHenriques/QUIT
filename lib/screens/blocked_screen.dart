@@ -22,6 +22,8 @@ class _BlockedScreenState extends State<BlockedScreen> {
   bool _isTimeLimitExceeded = false;
   int _dailyLimitSeconds = 0;
   int _initialRemainingSeconds = 0;
+  bool _isBonusCooldown = false;
+  int _timeUntilBonusSeconds = 0;
 
   UsageTimer? _usageTimer;
 
@@ -53,6 +55,12 @@ class _BlockedScreenState extends State<BlockedScreen> {
     await _usageTimer?.checkAndResetIfNeeded();
   }
 
+  String get _bonusCountdownFormatted {
+    final minutes = _timeUntilBonusSeconds ~/ 60;
+    final seconds = _timeUntilBonusSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
   Future<void> _loadBlockedAppInfo() async {
     try {
       final info = await blockedAppChannel.invokeMethod('getBlockedAppInfo');
@@ -62,17 +70,23 @@ class _BlockedScreenState extends State<BlockedScreen> {
       final dailyLimit = info['dailyLimitSeconds'] as int? ?? 0;
       final remaining = info['remainingSeconds'] as int? ?? 0;
 
+      final bonusCooldown = info['bonusCooldown'] as bool? ?? false;
+      final timeUntilBonusMs = info['timeUntilBonusMs'] as int? ?? 0;
+
       setState(() {
         _blockedPackageName = packageName;
         _appName = appName ?? packageName;
         _isTimeLimitExceeded = timeLimit;
         _dailyLimitSeconds = dailyLimit;
         _initialRemainingSeconds = remaining;
+        _isBonusCooldown = bonusCooldown;
+        _timeUntilBonusSeconds = (timeUntilBonusMs / 1000).round();
+
         _loading = false;
       });
 
       print(
-        '📦 Blocked: $packageName (limit: $dailyLimit s, remaining: $remaining s)',
+        '📦 Blocked: $packageName (limit: $dailyLimit s, remaining: $remaining s, bonusCooldown: $bonusCooldown)',
       );
     } catch (e) {
       print('❌ Error loading blocked app info: $e');
@@ -161,19 +175,20 @@ class _BlockedScreenState extends State<BlockedScreen> {
 
                         // Icon
                         Icon(
-                          Icons.block,
+                          _isBonusCooldown ? Icons.timer_outlined : Icons.block,
                           size: 100,
-                          color: _isTimeLimitExceeded
+                          color: _isTimeLimitExceeded || _isBonusCooldown
                               ? Colors.orange
                               : Colors.red,
                         ),
                         const SizedBox(height: 32),
 
-                        // Title
                         Text(
-                          _isTimeLimitExceeded
-                              ? 'Time Limit Reached!'
-                              : 'App Blocked!',
+                          _isBonusCooldown
+                              ? 'Daily Time Exhausted'
+                              : (_isTimeLimitExceeded
+                                    ? 'Time Limit Reached!'
+                                    : 'App Blocked!'),
                           style: const TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
@@ -194,8 +209,131 @@ class _BlockedScreenState extends State<BlockedScreen> {
                         ),
                         const SizedBox(height: 48),
 
-                        // TIME LIMIT MODE
-                        if (_isTimeLimitExceeded) ...[
+                        // BONUS COOLDOWN MODE - Show both daily timer (0:00) and bonus timer
+                        if (_isBonusCooldown) ...[
+                          // Daily timer (exhausted)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[900],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.red, width: 2),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'Daily Time Remaining',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white60,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  remainingFormatted,
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.bold,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Daily reset countdown
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[900],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'Daily Limit Resets In',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.white60,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _usageTimer?.formatDuration(timeUntilReset) ??
+                                      '',
+                                  style: const TextStyle(
+                                    fontSize: 32,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Bonus timer
+                          Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: Colors.orange[900],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.orange,
+                                width: 2,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'Next bonus in',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _bonusCountdownFormatted,
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    color: Colors.orange,
+                                    fontWeight: FontWeight.bold,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  '💡 You get 5 bonus minutes every hour',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white60,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        // TIME LIMIT MODE (daily time available but exhausted)
+                        if (_isTimeLimitExceeded && !_isBonusCooldown) ...[
                           // Daily limit info
                           Text(
                             'Daily limit: $dailyLimitFormatted',
@@ -283,8 +421,10 @@ class _BlockedScreenState extends State<BlockedScreen> {
                               ],
                             ),
                           ),
-                        ] else ...[
-                          // NORMAL BLOCK MODE
+                        ],
+
+                        // NORMAL BLOCK MODE (no timer)
+                        if (!_isTimeLimitExceeded && !_isBonusCooldown) ...[
                           const Text(
                             'This app has been blocked.\nYou cannot access it right now.',
                             style: TextStyle(

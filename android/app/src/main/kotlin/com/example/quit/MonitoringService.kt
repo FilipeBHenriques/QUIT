@@ -111,31 +111,32 @@ class MonitoringService : Service() {
 
     // SINGLE SOURCE OF TRUTH: Check and perform reset if needed
     private fun checkAndPerformReset(prefs: SharedPreferences) {
-        val dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
-        if (dailyLimitSeconds == 0) return // No timer configured
-        
-        val lastReset = prefs.getLong("flutter.timer_last_reset", 0L)
-        if (lastReset == 0L) {
-            // First time - DON'T initialize countdown yet
-            // Wait for user to make a choice on first-time gamble screen
-            Log.d(TAG, "⏰ Timer not started yet - waiting for first choice")
-            return
-        }
-        
-        val resetIntervalSeconds = prefs.getIntSafe("flutter.reset_interval_seconds", 86400)
-        val resetIntervalMs = resetIntervalSeconds * 1000L
-        val timeSinceReset = System.currentTimeMillis() - lastReset
-        
-        if (timeSinceReset >= resetIntervalMs) {
-            Log.d(TAG, "⏰ 24h timer expired - resetting now!")
-            prefs.edit()
-                .putInt("flutter.remaining_seconds", dailyLimitSeconds)
-                .putInt("flutter.used_today_seconds", 0)
-                .remove("flutter.timer_last_reset")
-                .remove("flutter.timer_first_choice_made") // Clear choice flag for new cycle
-                .apply()
-        }
+    val dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
+    if (dailyLimitSeconds == 0) return
+    
+    val lastReset = prefs.getLong("flutter.timer_last_reset", 0L)
+    if (lastReset == 0L) {
+        prefs.edit()
+            .putLong("flutter.timer_last_reset", System.currentTimeMillis())
+            .apply()
+        return
     }
+    
+    val resetIntervalSeconds = prefs.getIntSafe("flutter.reset_interval_seconds", 86400)
+    val resetIntervalMs = resetIntervalSeconds * 1000L
+    val timeSinceReset = System.currentTimeMillis() - lastReset
+    
+    if (timeSinceReset >= resetIntervalMs) {
+        Log.d(TAG, "⏰ 24h timer expired - resetting now!")
+        prefs.edit()
+            .putInt("flutter.remaining_seconds", dailyLimitSeconds)
+            .putInt("flutter.used_today_seconds", 0)
+            .remove("flutter.timer_last_reset")
+            .remove("flutter.daily_time_ran_out_timestamp") // Clear the ran out timestamp
+            // NOTE: DON'T reset last_bonus_time ← IMPORTANT
+            .apply()
+    }
+}
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.getStringExtra("action")
@@ -180,131 +181,163 @@ class MonitoringService : Service() {
         }
     }
 
-    private fun handleForegroundApp(foregroundApp: String) {
-        // Don't block our own app
-        if (foregroundApp == packageName) {
-            stopTimeTracking()
-            currentlyBlockedApp = null
-            return
-        }
-
-        // SINGLE SOURCE OF TRUTH: Always read fresh values from SharedPreferences
-        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        
-        // Check and perform reset if needed (single place for all reset logic)
-        checkAndPerformReset(prefs)
-        
-        // Read current state (post-reset if it happened)
-        val dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
-        val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
-
-        val isBlocked = cachedBlockedApps.contains(foregroundApp)
-        val isDifferentApp = foregroundApp != currentlyBlockedApp
-
-        if (isBlocked) {
-            // THREE CASES:
-            
-            // Case 1: No timer configured - traditional blocking
-            if (dailyLimitSeconds == 0) {
-                if (isDifferentApp) {
-                    stopTimeTracking()
-                    Log.d(TAG, "🚫 Blocking app (no timer): $foregroundApp")
-                    showBlockingScreen(foregroundApp, timeLimit = false, dailyLimitSeconds, remainingSeconds)
-                    currentlyBlockedApp = foregroundApp
-                }
-            }
-            // Case 2: Timer enabled but time exhausted - block with timer message
-            else if (remainingSeconds <= 0) {
-                if (isDifferentApp) {
-                    stopTimeTracking()
-                    Log.d(TAG, "⏱️ Time limit exceeded: $foregroundApp")
-                    showTimeLimitExceededScreen(foregroundApp, dailyLimitSeconds, remainingSeconds)
-                    currentlyBlockedApp = foregroundApp
-                }
-            }
-            // Case 3: Timer enabled with time remaining - Check if first time
-            else {
-                val lastResetTimestamp = prefs.getLong("flutter.timer_last_reset", 0)
-                val isFirstTimeAccess = (lastResetTimestamp == 0L)
-                
-                if (isFirstTimeAccess && isDifferentApp) {
-                    // FIRST TIME: Show gamble offer screen
-                    stopTimeTracking()
-                    currentlyBlockedApp = foregroundApp
-                    Log.d(TAG, "🎰 First time access - showing gamble offer: $foregroundApp")
-                    showFirstTimeGambleScreen(foregroundApp, dailyLimitSeconds, remainingSeconds)
-                } else {
-                    // SUBSEQUENT ACCESS: Allow normally + track time
-                    if (isDifferentApp) {
-                        stopTimeTracking()
-                        currentlyBlockedApp = foregroundApp
-                        Log.d(TAG, "✅ Allowing access with timer: $foregroundApp (${remainingSeconds}s remaining)")
-                    }
-                    startTimeTracking(prefs)
-                }
-            }
-        } else {
-            // Not a blocked app - stop tracking
-            stopTimeTracking()
-            currentlyBlockedApp = null
-        }
+    private fun showBonusCooldownScreen(
+    foregroundApp: String,
+    dailyLimitSeconds: Int,
+    timeUntilBonusMs: Long
+) {
+    val intent = Intent(this, BlockingActivity::class.java).apply {
+        putExtra("packageName", foregroundApp)
+        putExtra("appName", getAppLabel(foregroundApp))
+        putExtra("timeLimit", true)
+        putExtra("dailyLimitSeconds", dailyLimitSeconds)
+        putExtra("remainingSeconds", 0) // Daily time is exhausted
+        putExtra("bonusCooldown", true)
+        putExtra("timeUntilBonusMs", timeUntilBonusMs)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
     }
+    startActivity(intent)
+    Log.d(TAG, "🎰 Showing bonus cooldown screen for $foregroundApp")
+}
 
-    // Helper method for traditional blocking (no timer)
-    private fun showBlockingScreen(foregroundApp: String, timeLimit: Boolean, dailyLimitSeconds: Int, remainingSeconds: Int) {
+
+    private fun showFirstTimeGambleScreen(foregroundApp: String) {
         val intent = Intent(this, BlockingActivity::class.java).apply {
             putExtra("packageName", foregroundApp)
             putExtra("appName", getAppLabel(foregroundApp))
-            putExtra("timeLimit", timeLimit)
-            putExtra("dailyLimitSeconds", dailyLimitSeconds)
-            putExtra("remainingSeconds", remainingSeconds)
-            putExtra("screenType", "blocking")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        startActivity(intent)
-    }
-
-    private fun showTimeLimitExceededScreen(foregroundApp: String, dailyLimitSeconds: Int, remainingSeconds: Int) {
-        Log.d(TAG, "⏱️ Time limit exceeded for: $foregroundApp")
-        val intent = Intent(this, BlockingActivity::class.java).apply {
-            putExtra("packageName", foregroundApp)
-            putExtra("appName", getAppLabel(foregroundApp))
-            putExtra("timeLimit", true)
-            putExtra("dailyLimitSeconds", dailyLimitSeconds)
-            putExtra("remainingSeconds", remainingSeconds)
-            putExtra("screenType", "time_limit_exceeded")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        startActivity(intent)
-    }
-
-    // NEW: Show first-time gamble offer screen
-    private fun showFirstTimeGambleScreen(foregroundApp: String, dailyLimitSeconds: Int, remainingSeconds: Int) {
-        Log.d(TAG, "🎰 Showing first-time gamble screen for: $foregroundApp")
-        val intent = Intent(this, BlockingActivity::class.java).apply {
-            putExtra("packageName", foregroundApp)
-            putExtra("appName", getAppLabel(foregroundApp))
-            putExtra("timeLimit", true)
-            putExtra("dailyLimitSeconds", dailyLimitSeconds)
-            putExtra("remainingSeconds", remainingSeconds)
             putExtra("screenType", "first_time_gamble")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
         startActivity(intent)
+        Log.d(TAG, "🎰 Showing first time gamble screen for $foregroundApp")
     }
 
-    private fun startTimeTracking(prefs: SharedPreferences) {
-        // Don't start tracking if screen is off
-        if (!isScreenOn) {
-            Log.d(TAG, "⏸️ Screen is OFF - not starting time tracking")
+    private fun handleForegroundApp(foregroundApp: String) {
+        if (foregroundApp == packageName) {
+            if (currentlyBlockedApp != null) {
+                stopTimeTracking()
+                currentlyBlockedApp = null
+                Log.d(TAG, "✅ User returned to QUIT app - stopped tracking")
+            }
             return
         }
-        
+
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
+
+        if (dailyLimitSeconds > 0 && cachedBlockedApps.contains(foregroundApp)) {
+            val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
+            val dailyRanOutTimestamp = prefs.getLong("flutter.daily_time_ran_out_timestamp", 0L)
+            
+            Log.d(TAG, "🎯 Blocked app detected: $foregroundApp (remaining: ${remainingSeconds}s, dailyRanOut: $dailyRanOutTimestamp)")
+
+            if (remainingSeconds > 0) {
+                // Daily time still available - allow usage and track time
+                currentlyBlockedApp = foregroundApp
+                startTimeTracking()
+            } else {
+                // Daily time exhausted - check bonus system
+                val lastBonusTimestamp = prefs.getLong("flutter.last_bonus_time", 0L)
+                val bonusRefillIntervalSeconds = prefs.getIntSafe("flutter.bonus_refill_interval_seconds", 3600)
+                val bonusRefillIntervalMs = bonusRefillIntervalSeconds * 1000L
+                
+                val now = System.currentTimeMillis()
+                
+                // If daily time just ran out, mark the timestamp
+                if (dailyRanOutTimestamp == 0L) {
+                    prefs.edit()
+                        .putLong("flutter.daily_time_ran_out_timestamp", now)
+                        .apply()
+                    Log.d(TAG, "⏰ Marked daily time ran out at $now")
+                }
+                
+                // CRITICAL: Re-read the actual stored timestamp after potentially setting it
+                val actualRanOutTime = prefs.getLong("flutter.daily_time_ran_out_timestamp", now)
+                
+                // Check if bonus is available
+                val bonusAvailable: Boolean
+                val timeUntilBonusMs: Long
+                
+                if (lastBonusTimestamp == 0L) {
+                    // Never granted bonus - check time since daily ran out
+                    val timeSinceRanOut = now - actualRanOutTime
+                    bonusAvailable = timeSinceRanOut >= bonusRefillIntervalMs
+                    timeUntilBonusMs = if (bonusAvailable) 0L else (bonusRefillIntervalMs - timeSinceRanOut)
+                    Log.d(TAG, "🎲 Never granted: timeSince=${timeSinceRanOut}ms, timeUntil=${timeUntilBonusMs}ms (${timeUntilBonusMs/1000}s)")
+                } else {
+                    // Previously granted - check time since last bonus
+                    val timeSinceLastBonus = now - lastBonusTimestamp
+                    bonusAvailable = timeSinceLastBonus >= bonusRefillIntervalMs
+                    timeUntilBonusMs = if (bonusAvailable) 0L else (bonusRefillIntervalMs - timeSinceLastBonus)
+                    Log.d(TAG, "🎲 Previously: timeSince=${timeSinceLastBonus}ms, timeUntil=${timeUntilBonusMs}ms (${timeUntilBonusMs/1000}s)")
+                }
+                
+                if (bonusAvailable) {
+                    // Bonus is ready! Grant the bonus time
+                    val bonusSeconds = prefs.getIntSafe("flutter.bonus_amount_seconds", 300) // Default 5 minutes
+                    
+                    // Add bonus time to remaining
+                    val currentRemaining = prefs.getIntSafe("flutter.remaining_seconds", 0)
+                    val newRemaining = currentRemaining + bonusSeconds
+                    
+                    // Mark when bonus was granted
+                    prefs.edit()
+                        .putInt("flutter.remaining_seconds", newRemaining)
+                        .putLong("flutter.last_bonus_time", now)
+                        .apply()
+                    
+                    Log.d(TAG, "🎁 Bonus granted! Added ${bonusSeconds}s. Remaining: ${currentRemaining}s → ${newRemaining}s")
+                    
+                    // Show gamble screen so user can choose to gamble or use the time
+                    Log.d(TAG, "🎰 Showing gamble screen")
+                    showFirstTimeGambleScreen(foregroundApp)
+                } else {
+                    // Show bonus cooldown screen with both timers
+                    Log.d(TAG, "⏳ Bonus cooldown: ${timeUntilBonusMs}ms (${timeUntilBonusMs/1000}s) remaining")
+                    showBonusCooldownScreen(foregroundApp, dailyLimitSeconds, timeUntilBonusMs)
+                }
+            }
+        } else if (cachedBlockedApps.contains(foregroundApp)) {
+            // No timer - regular block
+            val intent = Intent(this, BlockingActivity::class.java).apply {
+                putExtra("packageName", foregroundApp)
+                putExtra("appName", getAppLabel(foregroundApp))
+                putExtra("timeLimit", false)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(intent)
+            Log.d(TAG, "🚫 Showing block screen for $foregroundApp")
+        } else {
+            // Not blocked
+            if (currentlyBlockedApp != null) {
+                stopTimeTracking()
+                currentlyBlockedApp = null
+                Log.d(TAG, "✅ Switched to non-blocked app - stopped tracking")
+            }
+        }
+    }
+
+    private fun startTimeTracking() {
         if (sessionStartTime == null) {
             sessionStartTime = System.currentTimeMillis()
-            lastSaveTime = System.currentTimeMillis()
+            lastSaveTime = sessionStartTime!!
             
-            // IMPORTANT: Only start the reset timer if user came from first-time gamble screen
+            // SINGLE PLACE: Set reset timestamp if not set
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
+            if (lastReset == 0L) {
+                prefs.edit()
+                    .putLong("flutter.timer_last_reset", System.currentTimeMillis())
+                    .apply()
+                Log.d(TAG, "⏰ Started 24h reset countdown")
+            }
+            
             // Check if they've made a choice (timer_first_choice_made flag)
             val hasNmadeChoice = prefs.getBoolean("flutter.timer_first_choice_made", false)
             
@@ -335,10 +368,17 @@ class MonitoringService : Service() {
             
             // IMPORTANT: Increment used_today_seconds (persistent counter)
             val currentUsed = prefs.getIntSafe("flutter.used_today_seconds", 0)
-            prefs.edit()
+            val editor = prefs.edit()
                 .putInt("flutter.remaining_seconds", newRemaining)
                 .putInt("flutter.used_today_seconds", currentUsed + elapsed)
-                .apply()
+            
+            // If remaining just hit 0, mark that daily time ran out
+            if (newRemaining == 0 && remainingSeconds > 0) {
+                editor.putLong("flutter.daily_time_ran_out_timestamp", System.currentTimeMillis())
+                Log.d(TAG, "⏰ Daily time ran out - marked timestamp")
+            }
+            
+            editor.apply()
             
             Log.d(TAG, "⏱️ Stopped tracking. Used: ${elapsed}s, Total used today: ${currentUsed + elapsed}s, Remaining: ${newRemaining}s")
         }
@@ -364,10 +404,17 @@ class MonitoringService : Service() {
                 
                 // IMPORTANT: Increment used_today_seconds
                 val currentUsed = prefs.getIntSafe("flutter.used_today_seconds", 0)
-                prefs.edit()
+                val editor = prefs.edit()
                     .putInt("flutter.remaining_seconds", newRemaining)
                     .putInt("flutter.used_today_seconds", currentUsed + elapsedSinceSave)
-                    .apply()
+                
+                // If remaining just hit 0, mark that daily time ran out
+                if (newRemaining == 0 && remainingSeconds > 0) {
+                    editor.putLong("flutter.daily_time_ran_out_timestamp", System.currentTimeMillis())
+                    Log.d(TAG, "⏰ Daily time ran out - marked timestamp")
+                }
+                
+                editor.apply()
                 
                 lastSaveTime = currentTime
                 
@@ -380,7 +427,36 @@ class MonitoringService : Service() {
                     handler.post {
                         currentlyBlockedApp?.let { app ->
                             val dailyLimit = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
-                            showTimeLimitExceededScreen(app, dailyLimit, newRemaining)
+                            
+                            // Check bonus availability
+                            val dailyRanOutTimestamp = prefs.getLong("flutter.daily_time_ran_out_timestamp", 0L)
+                            val lastBonusTimestamp = prefs.getLong("flutter.last_bonus_time", 0L)
+                            val bonusRefillIntervalSeconds = prefs.getIntSafe("flutter.bonus_refill_interval_seconds", 3600)
+                            val bonusRefillIntervalMs = bonusRefillIntervalSeconds * 1000L
+                            
+                            val now = System.currentTimeMillis()
+                            val bonusAvailable: Boolean
+                            val timeUntilBonusMs: Long
+                            
+                            if (lastBonusTimestamp == 0L) {
+                                // Never granted - check time since daily ran out
+                                val timeSinceRanOut = now - dailyRanOutTimestamp
+                                bonusAvailable = timeSinceRanOut >= bonusRefillIntervalMs
+                                timeUntilBonusMs = if (bonusAvailable) 0L else (bonusRefillIntervalMs - timeSinceRanOut)
+                            } else {
+                                // Previously granted - check time since last bonus
+                                val timeSinceLastBonus = now - lastBonusTimestamp
+                                bonusAvailable = timeSinceLastBonus >= bonusRefillIntervalMs
+                                timeUntilBonusMs = if (bonusAvailable) 0L else (bonusRefillIntervalMs - timeSinceLastBonus)
+                            }
+                            
+                            if (bonusAvailable) {
+                              showFirstTimeGambleScreen(foregroundApp)
+                                // Show gamble screen - user decides: gamble the 5 min or use it
+                                
+                            } else {
+                                showBonusCooldownScreen(app, dailyLimit, timeUntilBonusMs)
+                            }
                         }
                     }
                 }

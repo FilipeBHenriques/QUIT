@@ -44,8 +44,11 @@ class BlockingActivity : FlutterActivity() {
                         "appName" to intent.getStringExtra("appName"),
                         "timeLimit" to intent.getBooleanExtra("timeLimit", false),
                         "dailyLimitSeconds" to intent.getIntExtra("dailyLimitSeconds", 0),
-                        "remainingSeconds" to intent.getIntExtra("remainingSeconds", 0)
+                        "remainingSeconds" to intent.getIntExtra("remainingSeconds", 0),
+                        "bonusCooldown" to intent.getBooleanExtra("bonusCooldown", false),
+                        "timeUntilBonusMs" to intent.getLongExtra("timeUntilBonusMs", 0L).toInt()
                     )
+                    Log.d("BlockingActivity", "📦 Sending info to Flutter: $info")
                     result.success(info)
                 }
                 else -> result.notImplemented()
@@ -69,6 +72,16 @@ class BlockingActivity : FlutterActivity() {
                 result.error("INVALID_PACKAGE", "Package name is null", null)
             }
         }
+        "navigateToRoute" -> {
+            val route = call.argument<String>("route")
+            val blockedApp = call.argument<String>("blockedApp")
+            if (route != null) {
+                navigateToRoute(route, blockedApp)
+                result.success(true)
+            } else {
+                result.error("INVALID_ROUTE", "Route is null", null)
+            }
+        }
         else -> result.notImplemented()
     }
 }
@@ -83,6 +96,25 @@ class BlockingActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun navigateToRoute(route: String, blockedApp: String?) {
+        try {
+            val intent = Intent(this, MainActivity::class.java).apply {
+                putExtra("route", route)
+                if (blockedApp != null) {
+                    putExtra("blockedApp", blockedApp)
+                }
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(intent)
+            finish()
+        } catch (e: Exception) {
+            Log.e("BlockingActivity", "Error navigating to route: $route", e)
+            goToHomeScreen()
         }
     }
 

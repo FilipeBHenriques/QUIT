@@ -9,18 +9,29 @@ class UsageTimer {
   static const String _keyLastReset = 'timer_last_reset';
   static const String _keySessionStart = 'current_session_start';
   static const String _keyUsedToday = 'used_today_seconds';
+  static const String _keyLastBonus = 'last_bonus_time';
+  static const String _keyDailyTimeRanOut = 'daily_time_ran_out_timestamp';
 
   final SharedPreferences _prefs;
 
   /// Duration between resets (default: 24 hours). You can adjust this to whatever you want.
   Duration resetInterval;
 
+  /// Duration between bonus refills (default: 1 hour).
+  Duration bonusRefillInterval;
+
   UsageTimer(
     this._prefs, {
     this.resetInterval = const Duration(hours: 24, minutes: 0, seconds: 0),
+    this.bonusRefillInterval = const Duration(hours: 0, minutes: 1, seconds: 0),
   }) {
     // Save reset interval to preferences so MonitoringService can read it
     _prefs.setInt('reset_interval_seconds', resetInterval.inSeconds);
+    // Save bonus refill interval to preferences so MonitoringService can read it
+    _prefs.setInt(
+      'bonus_refill_interval_seconds',
+      bonusRefillInterval.inSeconds,
+    );
   }
 
   // Configuration
@@ -37,10 +48,27 @@ class UsageTimer {
     if (seconds == 0) {
       // Disabling: set remaining to 0
       await _prefs.setInt(_keyRemaining, 0);
+      await _prefs.remove(_keyDailyTimeRanOut); // Clear the ran out timestamp
     } else {
       // Enabling/changing: remaining = newLimit - actualUsedTime
       final newRemaining = max(0, seconds - usedToday);
       await _prefs.setInt(_keyRemaining, newRemaining);
+
+      // If remaining is already 0, mark that daily time has run out
+      if (newRemaining == 0) {
+        await _prefs.setInt(
+          _keyDailyTimeRanOut,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+      } else {
+        await _prefs.remove(_keyDailyTimeRanOut);
+      }
+    }
+
+    // ✨ INITIALIZE BONUS SYSTEM
+    if (!_prefs.containsKey(_keyLastBonus)) {
+      await _prefs.setInt(_keyLastBonus, 0); // 0 = never granted
+      print('✨ Bonus system initialized (never granted)');
     }
 
     // DON'T set reset timestamp here - it will be set on first app usage
@@ -63,6 +91,66 @@ class UsageTimer {
 
   int get lastResetTimestamp => _prefs.getInt(_keyLastReset) ?? 0;
 
+  // ✨ NEW: Daily time ran out timestamp
+  int get dailyTimeRanOutTimestamp => _prefs.getInt(_keyDailyTimeRanOut) ?? 0;
+
+  // ✨ BONUS TIME GETTERS - Modified to only start after daily time runs out
+  int get lastBonusTimestamp => _prefs.getInt(_keyLastBonus) ?? 0;
+
+  bool get hasBonusAvailable {
+    // Bonus is only available if daily time has run out
+    if (dailyTimeRanOutTimestamp == 0) return false;
+
+    final lastBonus = lastBonusTimestamp;
+
+    // If never granted, bonus is available immediately after daily time runs out
+    if (lastBonus == 0) return true;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final bonusIntervalMs = bonusRefillInterval.inMilliseconds;
+
+    // Check if enough time has passed since last bonus
+    return (now - lastBonus) >= bonusIntervalMs;
+  }
+
+  Duration? get timeUntilNextBonus {
+    // If daily time hasn't run out yet, no bonus timer
+    if (dailyTimeRanOutTimestamp == 0) return null;
+
+    final lastBonus = lastBonusTimestamp;
+    final bonusIntervalMs = bonusRefillInterval.inMilliseconds;
+
+    // If never granted, calculate time since daily ran out
+    if (lastBonus == 0) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final timeSinceDailyRanOut = now - dailyTimeRanOutTimestamp;
+
+      if (timeSinceDailyRanOut >= bonusIntervalMs) {
+        return null; // Bonus available now
+      }
+
+      return Duration(milliseconds: bonusIntervalMs - timeSinceDailyRanOut);
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final elapsed = now - lastBonus;
+
+    if (elapsed >= bonusIntervalMs) return null; // Available now
+
+    return Duration(milliseconds: bonusIntervalMs - elapsed);
+  }
+
+  // Mark that daily time has run out (called by MonitoringService when remaining hits 0)
+  Future<void> markDailyTimeRanOut() async {
+    if (dailyTimeRanOutTimestamp == 0) {
+      await _prefs.setInt(
+        _keyDailyTimeRanOut,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      print('⏰ Daily time ran out - bonus timer started');
+    }
+  }
+
   // Reset logic
   bool shouldReset() {
     if (lastResetTimestamp == 0) return false;
@@ -78,6 +166,8 @@ class UsageTimer {
     await _prefs.setInt(_keyRemaining, dailyLimitSeconds);
     await _prefs.setInt(_keyUsedToday, 0); // Reset used time
     await _prefs.remove(_keyLastReset); // Clear timestamp - wait for next usage
+    await _prefs.remove(_keyDailyTimeRanOut); // Clear daily ran out timestamp
+    // NOTE: Don't reset _keyLastBonus - it's independent
     print('⏰ Timer reset: ${dailyLimitSeconds}s available, countdown cleared');
   }
 
@@ -85,12 +175,6 @@ class UsageTimer {
     if (shouldReset()) {
       await resetTimer();
     }
-  }
-
-  // Time tracking
-  Future<void> decrementTime(int seconds) async {
-    final current = remainingSeconds;
-    await _setRemainingSeconds(current - seconds);
   }
 
   // Time until next reset
