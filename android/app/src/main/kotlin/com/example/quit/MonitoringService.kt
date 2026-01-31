@@ -26,7 +26,7 @@ class MonitoringService : Service() {
     // Time tracking state
     private var sessionStartTime: Long? = null
     private var lastSaveTime: Long = 0
-    private val SAVE_INTERVAL_MS = 5000L // Save every 5 seconds
+    private val SAVE_INTERVAL_MS = 1000L // Save every 1 second for better accuracy
     
     // Screen state tracking
     private var isScreenOn: Boolean = true
@@ -346,7 +346,10 @@ class MonitoringService : Service() {
 
     private fun stopTimeTracking() {
         sessionStartTime?.let { startTime ->
-            val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
+            // Use lastSaveTime to calculate elapsed since last save, NOT start time
+            // This prevents double counting time that was already deducted in updateTimeTracking
+            val referenceTime = if (lastSaveTime > 0) lastSaveTime else startTime
+            val elapsed = ((System.currentTimeMillis() - referenceTime) / 1000).toInt()
             
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
@@ -361,14 +364,15 @@ class MonitoringService : Service() {
             // If remaining just hit 0, mark that daily time ran out
             if (newRemaining == 0 && remainingSeconds > 0) {
                 editor.putLong("flutter.daily_time_ran_out_timestamp", System.currentTimeMillis())
-                Log.d(TAG, "⏰ Daily time ran out - marked timestamp")
+                Log.d(TAG, "⏰ Daily time ran out in stopTimeTracking - marked timestamp")
             }
             
             editor.apply()
             
-            Log.d(TAG, "⏱️ Stopped tracking. Used: ${elapsed}s, Total used today: ${currentUsed + elapsed}s, Remaining: ${newRemaining}s")
+            Log.d(TAG, "⏱️ Stopped tracking. Used: ${elapsed}s since last save. Remaining: ${newRemaining}s")
         }
         sessionStartTime = null
+        lastSaveTime = 0 // Reset last save time
     }
 
     private fun updateTimeTracking() {
@@ -408,13 +412,17 @@ class MonitoringService : Service() {
                 updateNotification()
                 
                 // Check if time ran out
-                if (newRemaining <= 0 && currentlyBlockedApp != null) {
+                // Safety: Check foreground app if currentlyBlockedApp is null to prevent bypass
+                val effectiveBlockedApp = currentlyBlockedApp ?: getCurrentForegroundApp()?.takeIf { cachedBlockedApps.contains(it) }
+
+                if (newRemaining <= 0 && effectiveBlockedApp != null) {
+                    Log.d(TAG, "⏰ Time ran out for $effectiveBlockedApp (current: $currentlyBlockedApp)")
                     stopTimeTracking()
-                    val app = currentlyBlockedApp // Save before clearing
+                    val app = effectiveBlockedApp 
                     currentlyBlockedApp = null // Clear to prevent re-showing
                     
                     handler.post {
-                        app?.let { blockedApp ->
+                        val blockedApp = app // safe local copy
                             val dailyLimit = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
                             
                             // Check bonus availability
@@ -451,7 +459,6 @@ class MonitoringService : Service() {
                         }
                     }
                 }
-            }
         }
     }
 

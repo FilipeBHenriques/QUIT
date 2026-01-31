@@ -41,8 +41,16 @@ class _BlockedScreenState extends State<BlockedScreen> {
       if (mounted && _usageTimer != null) {
         await _usageTimer!.reload();
         setState(() {
+          // Check daily reset
           if (_usageTimer!.shouldReset()) {
             _handleTimerReset();
+            return;
+          }
+          
+          // Check if bonus cooldown just finished
+          if (_isBonusCooldown && _usageTimer!.timeUntilNextBonus == null) {
+            print('🎁 Bonus cooldown finished - relaunching app');
+            _retryLaunchApp();
           }
         });
       }
@@ -122,6 +130,28 @@ class _BlockedScreenState extends State<BlockedScreen> {
       });
     } catch (e) {
       print('❌ Error launching app: $e');
+      _closeActivity();
+    }
+  }
+
+  bool _isRedirecting = false;
+
+  Future<void> _retryLaunchApp() async {
+    if (_blockedPackageName == null || _isRedirecting) {
+      if (_blockedPackageName == null) _closeActivity();
+      return;
+    }
+    
+    _isRedirecting = true;
+    print('🔁 Bonus ready - relaunching: $_blockedPackageName');
+    
+    try {
+      await navigationChannel.invokeMethod('launchApp', {
+        'packageName': _blockedPackageName,
+      });
+      // Don't flip _isRedirecting back immediately to prevent race conditions in the timer loop
+    } catch (e) {
+      print('❌ Error relaunching app: $e');
       _closeActivity();
     }
   }
