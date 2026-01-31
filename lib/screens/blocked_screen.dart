@@ -55,11 +55,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
     await _usageTimer?.checkAndResetIfNeeded();
   }
 
-  String get _bonusCountdownFormatted {
-    final minutes = _timeUntilBonusSeconds ~/ 60;
-    final seconds = _timeUntilBonusSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
-  }
+
 
   Future<void> _loadBlockedAppInfo() async {
     try {
@@ -143,6 +139,11 @@ class _BlockedScreenState extends State<BlockedScreen> {
   Widget build(BuildContext context) {
     final timeUntilReset = _usageTimer?.timeUntilReset() ?? Duration.zero;
     final remainingFormatted = _usageTimer?.remainingFormatted ?? "0:00";
+    
+    // Calculate bonus countdown directly from usage timer
+    // If null (meaning ready or not started), show 0:00
+    final timeUntilBonus = _usageTimer?.timeUntilNextBonus ?? Duration.zero;
+    final bonusCountdownFormatted = _usageTimer?.formatDuration(timeUntilBonus) ?? "0:00";
 
     final dailyLimitFormatted = _usageTimer?.formatSeconds(_dailyLimitSeconds);
 
@@ -309,7 +310,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  _bonusCountdownFormatted,
+                                  bonusCountdownFormatted,
                                   style: const TextStyle(
                                     fontSize: 48,
                                     color: Colors.orange,

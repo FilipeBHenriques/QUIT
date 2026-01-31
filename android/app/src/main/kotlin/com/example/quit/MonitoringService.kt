@@ -277,23 +277,9 @@ class MonitoringService : Service() {
                 }
                 
                 if (bonusAvailable) {
-                    // Bonus is ready! Grant the bonus time
-                    val bonusSeconds = prefs.getIntSafe("flutter.bonus_amount_seconds", 300) // Default 5 minutes
-                    
-                    // Add bonus time to remaining
-                    val currentRemaining = prefs.getIntSafe("flutter.remaining_seconds", 0)
-                    val newRemaining = currentRemaining + bonusSeconds
-                    
-                    // Mark when bonus was granted
-                    prefs.edit()
-                        .putInt("flutter.remaining_seconds", newRemaining)
-                        .putLong("flutter.last_bonus_time", now)
-                        .apply()
-                    
-                    Log.d(TAG, "🎁 Bonus granted! Added ${bonusSeconds}s. Remaining: ${currentRemaining}s → ${newRemaining}s")
-                    
-                    // Show gamble screen so user can choose to gamble or use the time
-                    Log.d(TAG, "🎰 Showing gamble screen")
+                    // Bonus is ready! Show gamble screen so user can choose to gamble or use the time
+                    // The bonus will be granted when they click "Continue to App" in the gamble screen
+                    Log.d(TAG, "🎁 Bonus available! Showing gamble screen")
                     showFirstTimeGambleScreen(foregroundApp)
                 } else {
                     // Show bonus cooldown screen with both timers
@@ -424,8 +410,11 @@ class MonitoringService : Service() {
                 // Check if time ran out
                 if (newRemaining <= 0 && currentlyBlockedApp != null) {
                     stopTimeTracking()
+                    val app = currentlyBlockedApp // Save before clearing
+                    currentlyBlockedApp = null // Clear to prevent re-showing
+                    
                     handler.post {
-                        currentlyBlockedApp?.let { app ->
+                        app?.let { blockedApp ->
                             val dailyLimit = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
                             
                             // Check bonus availability
@@ -451,11 +440,13 @@ class MonitoringService : Service() {
                             }
                             
                             if (bonusAvailable) {
-                              showFirstTimeGambleScreen(foregroundApp)
-                                // Show gamble screen - user decides: gamble the 5 min or use it
-                                
+                                // Bonus is ready! Show gamble screen
+                                Log.d(TAG, "🎁 Bonus available after time ran out! Showing gamble screen")
+                                showFirstTimeGambleScreen(blockedApp)
                             } else {
-                                showBonusCooldownScreen(app, dailyLimit, timeUntilBonusMs)
+                                // Show bonus cooldown screen
+                                Log.d(TAG, "⏳ Time ran out while in app! Showing cooldown screen")
+                                showBonusCooldownScreen(blockedApp, dailyLimit, timeUntilBonusMs)
                             }
                         }
                     }
