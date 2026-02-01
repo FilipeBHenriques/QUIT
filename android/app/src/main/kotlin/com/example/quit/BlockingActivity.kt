@@ -9,6 +9,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.util.Log
+import android.net.Uri
 
 class BlockingActivity : FlutterActivity() {
 
@@ -46,7 +47,8 @@ class BlockingActivity : FlutterActivity() {
                         "dailyLimitSeconds" to intent.getIntExtra("dailyLimitSeconds", 0),
                         "remainingSeconds" to intent.getIntExtra("remainingSeconds", 0),
                         "bonusCooldown" to intent.getBooleanExtra("bonusCooldown", false),
-                        "timeUntilBonusMs" to intent.getLongExtra("timeUntilBonusMs", 0L).toInt()
+                        "timeUntilBonusMs" to intent.getLongExtra("timeUntilBonusMs", 0L).toInt(),
+                        "totalBlock" to intent.getBooleanExtra("totalBlock", false)
                     )
                     Log.d("BlockingActivity", "📦 Sending info to Flutter: $info")
                     result.success(info)
@@ -82,6 +84,15 @@ class BlockingActivity : FlutterActivity() {
                 result.error("INVALID_ROUTE", "Route is null", null)
             }
         }
+        "launchUrl" -> {
+            val url = call.argument<String>("url")
+            if (url != null) {
+                launchUrl(url)
+                result.success(true)
+            } else {
+                result.error("INVALID_URL", "URL is null", null)
+            }
+        }
         else -> result.notImplemented()
     }
 }
@@ -92,6 +103,16 @@ class BlockingActivity : FlutterActivity() {
                 "updateBlockedApps" -> {
                     val blockedApps = call.argument<List<String>>("blockedApps") ?: emptyList()
                     updateBlockedApps(blockedApps)
+                    result.success(true)
+                }
+                "updateBlockedWebsites" -> {
+                    val blockedWebsites = call.argument<List<String>>("blockedWebsites") ?: emptyList()
+                    updateBlockedWebsites(blockedWebsites)
+                    result.success(true)
+                }
+                "updateTimerConfig" -> {
+                    val dailyLimitSeconds = call.argument<Int>("dailyLimitSeconds") ?: 0
+                    updateTimerConfig(dailyLimitSeconds)
                     result.success(true)
                 }
                 else -> result.notImplemented()
@@ -130,6 +151,30 @@ class BlockingActivity : FlutterActivity() {
         }
     }
 
+    private fun updateBlockedWebsites(blockedWebsites: List<String>) {
+        val intent = Intent(this, MonitoringService::class.java).apply {
+            putStringArrayListExtra("blocked_websites", ArrayList(blockedWebsites))
+            putExtra("action", "update_websites")
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    private fun updateTimerConfig(dailyLimitSeconds: Int) {
+        val intent = Intent(this, MonitoringService::class.java).apply {
+            putExtra("action", "update_timer")
+            putExtra("daily_limit_seconds", dailyLimitSeconds)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
     private fun launchApp(packageName: String) {
     try {
         val intent = packageManager.getLaunchIntentForPackage(packageName)
@@ -146,6 +191,19 @@ class BlockingActivity : FlutterActivity() {
         goToHomeScreen() // Fallback
     }
 }
+
+    private fun launchUrl(url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            finish()
+        } catch (e: Exception) {
+            Log.e("BlockingActivity", "Error launching URL: $url", e)
+            goToHomeScreen()
+        }
+    }
 
     private fun goToHomeScreen() {
         // Launch the home screen (launcher)

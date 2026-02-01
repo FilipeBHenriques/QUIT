@@ -14,12 +14,12 @@ import kotlin.concurrent.timer
 import kotlin.math.max
 import android.util.Log
 import android.content.SharedPreferences
+import android.net.Uri
 
 class MonitoringService : Service() {
 
     private var monitoringTimer: Timer? = null
     private val handler = Handler(Looper.getMainLooper())
-    private var cachedBlockedApps: MutableList<String> = mutableListOf()
     private var currentlyBlockedApp: String? = null
     private var lastKnownForegroundApp: String? = null
 
@@ -36,6 +36,11 @@ class MonitoringService : Service() {
         private const val TAG = "MonitoringService"
         private const val NOTIFICATION_ID = 100
         private const val CHANNEL_ID = "monitoring_channel"
+        
+        // Static caches to survive service re-creation
+        private var cachedBlockedApps: MutableList<String> = mutableListOf()
+        private var cachedBlockedWebsites: MutableList<String> = mutableListOf()
+        private var isInstantBlockWebsites: Boolean = true
         
         // Helper to safely read int values from SharedPreferences (handles both Int and Long)
         private fun SharedPreferences.getIntSafe(key: String, defaultValue: Int): Int {
@@ -55,6 +60,10 @@ class MonitoringService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
         registerScreenStateReceiver()
+        
+        // Initial sync of settings
+        isInstantBlockWebsites = prefs.getBoolean("flutter.instant_block_websites", true)
+        
         startMonitoring()
     }
     
@@ -139,21 +148,44 @@ class MonitoringService : Service() {
 }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val action = intent?.getStringExtra("action")
+        val action = intent?.action ?: intent?.getStringExtra("action")
+        Log.d(TAG, "onStartCommand: action=$action")
         
         when (action) {
             "update_timer" -> {
                 // Timer config updated - just update notification
-                val newLimit = intent.getIntExtra("daily_limit_seconds", 0)
+                val newLimit = intent?.getIntExtra("daily_limit_seconds", 0) ?: 0
                 Log.d(TAG, "⏱️ Timer config update received: $newLimit seconds")
                 updateNotification()
             }
+            "com.example.quit.URL_VISITED" -> {
+                val domain = intent?.getStringExtra("domain")
+                val browserPackage = intent?.getStringExtra("browser_package")
+                Log.d(TAG, "🔗 URL visit: $domain in $browserPackage")
+                if (domain != null) {
+                    handleWebsiteVisit(domain, browserPackage)
+                }
+            }
+            "update_websites" -> {
+                intent?.getStringArrayListExtra("blocked_websites")?.let {
+                    cachedBlockedWebsites.clear()
+                    cachedBlockedWebsites.addAll(it)
+                    Log.d(TAG, "📝 Updated blocked websites: $cachedBlockedWebsites")
+                }
+            }
             else -> {
-                // Normal blocked apps update
+                // Normal blocked apps update or refresh request
                 intent?.getStringArrayListExtra("blocked_apps")?.let {
                     cachedBlockedApps.clear()
                     cachedBlockedApps.addAll(it)
                     Log.d(TAG, "📝 Updated blocked apps: $cachedBlockedApps")
+                }
+                
+                // Also update websites if provided
+                intent?.getStringArrayListExtra("blocked_websites")?.let {
+                    cachedBlockedWebsites.clear()
+                    cachedBlockedWebsites.addAll(it)
+                    Log.d(TAG, "📝 Updated blocked websites: $cachedBlockedWebsites")
                 }
             }
         }
@@ -214,6 +246,59 @@ class MonitoringService : Service() {
         }
         startActivity(intent)
         Log.d(TAG, "🎰 Showing first time gamble screen for $foregroundApp")
+    }
+
+    private fun handleWebsiteVisit(domain: String, browserPackage: String?) {
+        val isBlocked = cachedBlockedWebsites.any { blocked -> 
+            domain == blocked || domain.endsWith(".$blocked")
+        }
+
+        if (isBlocked) {
+            Log.w(TAG, "🚫 Blocked website detected: $domain")
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
+
+            if (isInstantBlockWebsites || remainingSeconds <= 0) {
+                // Pre-emptively redirect the browser to Google
+                // This clears the blocked URL from the active tab automatically
+                redirectToSafeUrl(browserPackage)
+                
+                // Add a small delay for the browser to process the redirect
+                // before the blocking screen takes over
+                handler.postDelayed({
+                    showWebsiteBlockScreen(domain)
+                }, 500)
+            }
+        }
+    }
+
+    private fun redirectToSafeUrl(browserPackage: String?) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                if (browserPackage != null) {
+                    setPackage(browserPackage)
+                }
+            }
+            startActivity(intent)
+            Log.d(TAG, "🌐 Pre-emptively redirecting browser $browserPackage to Google")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error during pre-emptive redirect", e)
+        }
+    }
+
+    private fun showWebsiteBlockScreen(domain: String) {
+        val intent = Intent(this, BlockingActivity::class.java).apply {
+            putExtra("packageName", "browser") // Generic identifier
+            putExtra("appName", domain)
+            putExtra("screenType", "website_block")
+            putExtra("totalBlock", true) // No bonus/gamble for websites
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        startActivity(intent)
     }
 
     private fun handleForegroundApp(foregroundApp: String) {

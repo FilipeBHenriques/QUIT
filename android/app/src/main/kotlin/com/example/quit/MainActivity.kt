@@ -11,12 +11,15 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.os.PowerManager
+import android.text.TextUtils
+import android.widget.Toast
 
 class MainActivity : FlutterActivity() {
 
     private val MONITORING_CHANNEL = "com.quit.app/monitoring"
     private val USAGE_ACCESS_REQUEST_CODE = 1001
     private val OVERLAY_PERMISSION_REQUEST_CODE = 1002
+    private val ACCESSIBILITY_REQUEST_CODE = 1004
 
     companion object {
         private const val TAG = "MainActivity"
@@ -46,6 +49,11 @@ class MainActivity : FlutterActivity() {
                     updateBlockedApps(blockedApps)
                     result.success(true)
                 }
+                "updateBlockedWebsites" -> {
+                    val blockedWebsites = call.argument<List<String>>("blockedWebsites") ?: emptyList()
+                    updateBlockedWebsites(blockedWebsites)
+                    result.success(true)
+                }
                 "updateTimerConfig" -> {
                     val dailyLimitSeconds = call.argument<Int>("dailyLimitSeconds") ?: 0
                     Log.d(TAG, "⏱️ Updating timer config: $dailyLimitSeconds seconds")
@@ -71,6 +79,8 @@ class MainActivity : FlutterActivity() {
         // Silently redirect to settings if permissions missing
         if (!hasUsageAccess) {
             requestUsageAccessPermission()
+        } else if (!isAccessibilityServiceEnabled()) {
+            requestAccessibilityPermission()
         } else if (!hasOverlayPermission) {
             requestOverlayPermission()
         } else if (!hasBatteryOptimization) {
@@ -102,6 +112,31 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Error opening usage access settings", e)
         }
+    }
+
+    // ============= ACCESSIBILITY PERMISSION =============
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val service = "${packageName}/${BrowserAccessibilityService::class.java.canonicalName}"
+        val enabled = Settings.Secure.getInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
+        if (enabled == 1) {
+            val settingValue = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            if (settingValue != null) {
+                val splitter = TextUtils.SimpleStringSplitter(':')
+                splitter.setString(settingValue)
+                while (splitter.hasNext()) {
+                    if (splitter.next().equals(service, ignoreCase = true)) return true
+                }
+            }
+        }
+        return false
+    }
+
+    private fun requestAccessibilityPermission() {
+        Log.d(TAG, "♿ Accessibility permission required")
+        Toast.makeText(this, "Please enable QUIT in Accessibility settings", Toast.LENGTH_LONG).show()
+        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        startActivityForResult(intent, ACCESSIBILITY_REQUEST_CODE)
     }
 
     // ============= OVERLAY PERMISSION =============
@@ -161,11 +196,24 @@ class MainActivity : FlutterActivity() {
                 if (checkUsageStatsPermission()) {
                     Log.d(TAG, "✅ Usage Access permission granted!")
                     // Check next permission
-                    if (!checkOverlayPermission()) {
+                    if (!isAccessibilityServiceEnabled()) {
+                        requestAccessibilityPermission()
+                    } else if (!checkOverlayPermission()) {
                         requestOverlayPermission()
                     }
                 } else {
                     Log.w(TAG, "⚠️ Usage Access permission NOT granted")
+                }
+            }
+            ACCESSIBILITY_REQUEST_CODE -> {
+                if (isAccessibilityServiceEnabled()) {
+                    Log.d(TAG, "✅ Accessibility permission granted!")
+                    // Check next permission
+                    if (!checkOverlayPermission()) {
+                        requestOverlayPermission()
+                    }
+                } else {
+                    Log.w(TAG, "⚠️ Accessibility permission NOT granted")
                 }
             }
             OVERLAY_PERMISSION_REQUEST_CODE -> {
@@ -211,6 +259,18 @@ class MainActivity : FlutterActivity() {
         val intent = Intent(this, MonitoringService::class.java).apply {
             putStringArrayListExtra("blocked_apps", ArrayList(blockedApps))
             putExtra("action", "update")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+    }
+
+    private fun updateBlockedWebsites(blockedWebsites: List<String>) {
+        val intent = Intent(this, MonitoringService::class.java).apply {
+            putStringArrayListExtra("blocked_websites", ArrayList(blockedWebsites))
+            putExtra("action", "update_websites")
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)

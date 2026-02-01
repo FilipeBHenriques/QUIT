@@ -24,6 +24,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
   int _initialRemainingSeconds = 0;
   bool _isBonusCooldown = false;
   int _timeUntilBonusSeconds = 0;
+  bool _isTotalBlock = false;
 
   UsageTimer? _usageTimer;
 
@@ -85,6 +86,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
         _initialRemainingSeconds = remaining;
         _isBonusCooldown = bonusCooldown;
         _timeUntilBonusSeconds = (timeUntilBonusMs / 1000).round();
+        _isTotalBlock = info['totalBlock'] as bool? ?? false;
 
         _loading = false;
       });
@@ -135,6 +137,20 @@ class _BlockedScreenState extends State<BlockedScreen> {
   }
 
   bool _isRedirecting = false;
+
+  Future<void> _launchSafeSearch() async {
+    if (_isRedirecting) return;
+    setState(() => _isRedirecting = true);
+
+    try {
+      await navigationChannel.invokeMethod('launchUrl', {
+        'url': 'https://www.google.com',
+      });
+    } catch (e) {
+      print('❌ Error launching safe search: $e');
+      _closeActivity();
+    }
+  }
 
   Future<void> _retryLaunchApp() async {
     if (_blockedPackageName == null || _isRedirecting) {
@@ -190,18 +206,20 @@ class _BlockedScreenState extends State<BlockedScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Close button
-                        Align(
-                          alignment: Alignment.topRight,
-                          child: IconButton(
-                            icon: const Icon(
-                              Icons.close,
-                              color: Colors.white,
-                              size: 32,
+                        // Close button (only show if not total block, otherwise user must go home via system)
+                        // Actually, user should always be able to go home, but we'll label it "Go Home" or keep X
+                        if (!_isTotalBlock)
+                          Align(
+                            alignment: Alignment.topRight,
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 32,
+                              ),
+                              onPressed: _closeActivity,
                             ),
-                            onPressed: _closeActivity,
                           ),
-                        ),
                         const Spacer(),
 
                         // Icon
@@ -215,11 +233,13 @@ class _BlockedScreenState extends State<BlockedScreen> {
                         const SizedBox(height: 32),
 
                         Text(
-                          _isBonusCooldown
-                              ? 'Daily Time Exhausted'
-                              : (_isTimeLimitExceeded
-                                    ? 'Time Limit Reached!'
-                                    : 'App Blocked!'),
+                          _isTotalBlock
+                              ? 'Website Blocked!'
+                              : (_isBonusCooldown
+                                  ? 'Daily Time Exhausted'
+                                  : (_isTimeLimitExceeded
+                                        ? 'Time Limit Reached!'
+                                        : 'App Blocked!')),
                           style: const TextStyle(
                             fontSize: 32,
                             fontWeight: FontWeight.bold,
@@ -455,7 +475,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                         ],
 
                         // NORMAL BLOCK MODE (no timer)
-                        if (!_isTimeLimitExceeded && !_isBonusCooldown) ...[
+                        if (!_isTimeLimitExceeded && !_isBonusCooldown && !_isTotalBlock) ...[
                           const Text(
                             'This app has been blocked.\nYou cannot access it right now.',
                             style: TextStyle(
@@ -481,6 +501,54 @@ class _BlockedScreenState extends State<BlockedScreen> {
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+
+                        // WEBSITE / TOTAL BLOCK MODE
+                        if (_isTotalBlock) ...[
+                          const Text(
+                            'Strict blocking is active for this content.',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 48),
+                          ElevatedButton.icon(
+                            onPressed: _launchSafeSearch,
+                            icon: const Icon(Icons.search),
+                            label: const Text(
+                              'Go to Google Search',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 40,
+                                vertical: 20,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextButton.icon(
+                            onPressed: _closeActivity,
+                            icon: const Icon(Icons.home, color: Colors.white60),
+                            label: const Text(
+                              'Go to Home Screen',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: 16,
                               ),
                             ),
                           ),

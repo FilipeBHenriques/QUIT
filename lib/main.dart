@@ -39,15 +39,11 @@ Future<void> _initializeServicesOnLaunch() async {
     List<String> blockedWebsites =
         prefs.getStringList('blocked_websites') ?? [];
     if (blockedWebsites.isNotEmpty) {
-      bool instantBlock = prefs.getBool('instant_block_websites') ?? true;
-      bool shouldBlock = instantBlock;
-
-      if (!instantBlock) {
-        // Timer mode: check if time ran out
-        int dailyLimit = prefs.getInt('daily_limit_seconds') ?? 0;
-        int remaining = prefs.getInt('remaining_seconds') ?? dailyLimit;
-        shouldBlock = dailyLimit == 0 || remaining <= 0;
-      }
+      const platform = MethodChannel('com.quit.app/monitoring');
+      await platform.invokeMethod('updateBlockedWebsites', {
+        'blockedWebsites': blockedWebsites,
+      });
+      print('🌐 [LAUNCH] Website monitoring synced: ${blockedWebsites.length} sites');
     }
   } catch (e) {
     print('❌ [LAUNCH] Error initializing services: $e');
@@ -126,14 +122,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       List<String> blockedWebsites =
           prefs.getStringList('blocked_websites') ?? [];
       if (blockedWebsites.isNotEmpty) {
-        bool instantBlock = prefs.getBool('instant_block_websites') ?? true;
-        bool shouldBlock = instantBlock;
-
-        if (!instantBlock) {
-          int dailyLimit = prefs.getInt('daily_limit_seconds') ?? 0;
-          int remaining = prefs.getInt('remaining_seconds') ?? dailyLimit;
-          shouldBlock = dailyLimit == 0 || remaining <= 0;
-        }
+        await platform.invokeMethod('updateBlockedWebsites', {
+          'blockedWebsites': blockedWebsites,
+        });
+        print('🌐 [RESUME] Updated website monitoring: ${blockedWebsites.length} sites');
       }
     } catch (e) {
       print('❌ [RESUME] Error syncing services: $e');

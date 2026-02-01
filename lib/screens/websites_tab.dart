@@ -130,6 +130,16 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
       shouldRunVpn =
           _dailyLimitMinutes == 0 || _usageTimer!.remainingSeconds <= 0;
     }
+
+    // Update MonitoringService
+    try {
+      const platform = MethodChannel('com.quit.app/monitoring');
+      await platform.invokeMethod('updateBlockedWebsites', {
+        'blockedWebsites': _blockedWebsites.toList(),
+      });
+    } catch (e) {
+      print('⚠️ Sync error: $e');
+    }
   }
 
   Future<void> _toggleWebsite(String url, bool blocked) async {
