@@ -40,7 +40,6 @@ class MonitoringService : Service() {
         // Static caches to survive service re-creation
         private var cachedBlockedApps: MutableList<String> = mutableListOf()
         private var cachedBlockedWebsites: MutableList<String> = mutableListOf()
-        private var isInstantBlockWebsites: Boolean = true
         
         // Helper to safely read int values from SharedPreferences (handles both Int and Long)
         private fun SharedPreferences.getIntSafe(key: String, defaultValue: Int): Int {
@@ -61,8 +60,6 @@ class MonitoringService : Service() {
         startForeground(NOTIFICATION_ID, createNotification())
         registerScreenStateReceiver()
         
-        // Initial sync of settings
-        isInstantBlockWebsites = prefs.getBoolean("flutter.instant_block_websites", true)
         
         startMonitoring()
     }
@@ -258,7 +255,7 @@ class MonitoringService : Service() {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
 
-            if (isInstantBlockWebsites || remainingSeconds <= 0) {
+            if (true) { // Websites are always strictly blocked now
                 // Pre-emptively redirect the browser to Google
                 // This clears the blocked URL from the active tab automatically
                 redirectToSafeUrl(browserPackage)

@@ -18,7 +18,6 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
   Set<String> _blockedWebsites = {};
   bool _loading = true;
   bool _vpnActive = false;
-  bool _instantBlockMode = true;
 
   UsageTimer? _usageTimer;
   int _dailyLimitMinutes = 0;
@@ -104,11 +103,8 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
   Future<void> _loadBlockedWebsites() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList('blocked_websites') ?? [];
-    final instantBlock = prefs.getBool('instant_block_websites') ?? true;
-
     setState(() {
       _blockedWebsites = list.toSet();
-      _instantBlockMode = instantBlock;
       _loading = false;
     });
 
@@ -121,14 +117,8 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
     // Determine if VPN should be running
     bool shouldRunVpn = false;
 
-    if (_blockedWebsites.isEmpty) {
-      shouldRunVpn = false;
-    } else if (_instantBlockMode) {
+    if (_blockedWebsites.isNotEmpty) {
       shouldRunVpn = true;
-    } else if (_usageTimer != null) {
-      // Timer mode: only run if no timer OR time ran out
-      shouldRunVpn =
-          _dailyLimitMinutes == 0 || _usageTimer!.remainingSeconds <= 0;
     }
 
     // Update MonitoringService
@@ -157,22 +147,10 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
     await _syncVpnState();
 
     print(
-      '${blocked ? '🚫 Blocked' : '✅ Unblocked'}: $url (instant: $_instantBlockMode, vpn: $_vpnActive)',
+      '${blocked ? '🚫 Blocked' : '✅ Unblocked'}: $url (vpn: $_vpnActive)',
     );
   }
 
-  Future<void> _toggleInstantBlockMode(bool instant) async {
-    setState(() {
-      _instantBlockMode = instant;
-    });
-
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('instant_block_websites', instant);
-
-    await _syncVpnState();
-
-    print('🔄 Instant block mode: ${instant ? "ON" : "OFF"}');
-  }
 
   Future<void> _addCustomWebsite() async {
     final url = _customUrlController.text.trim();
@@ -241,36 +219,35 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
         // BLOCKING MODE SWITCH
         Container(
           padding: const EdgeInsets.all(16),
-          color: Colors.grey[900],
+          decoration: BoxDecoration(
+            color: Colors.redAccent.withOpacity(0.1),
+            border: Border(
+              bottom: BorderSide(color: Colors.redAccent.withOpacity(0.2)),
+            ),
+          ),
           child: Row(
             children: [
+              const Icon(Icons.info_outline, color: Colors.redAccent, size: 20),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Blocking Mode',
+                      'Strict Blocking Active',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
-                      _instantBlockMode
-                          ? 'Block immediately when selected'
-                          : 'Block only when timer runs out',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                      'Websites are always blocked instantly to ensure maximum protection.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[400]),
                     ),
                   ],
                 ),
-              ),
-              Switch(
-                value: _instantBlockMode,
-                onChanged: _toggleInstantBlockMode,
-                activeColor: Colors.redAccent,
-                inactiveThumbColor: Colors.white,
               ),
             ],
           ),
