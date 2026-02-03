@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'screens/blocked_screen.dart';
 import 'screens/gamble_screen.dart';
 import 'screens/apps_tab.dart';
@@ -9,24 +10,21 @@ import 'screens/websites_tab.dart';
 import 'screens/blackjack_screen.dart';
 import 'screens/roulette_screen.dart';
 import 'screens/mines_screen.dart';
+import 'package:go_router/go_router.dart';
+import 'widgets/game_card.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Start services immediately on app launch
   await _initializeServicesOnLaunch();
-
   runApp(const QuitApp());
 }
 
-// Initialize services ONCE on app launch
 Future<void> _initializeServicesOnLaunch() async {
   if (!Platform.isAndroid) return;
 
   try {
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    // Start app monitoring
     List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
     if (blockedApps.isNotEmpty) {
       const platform = MethodChannel('com.quit.app/monitoring');
@@ -43,7 +41,9 @@ Future<void> _initializeServicesOnLaunch() async {
       await platform.invokeMethod('updateBlockedWebsites', {
         'blockedWebsites': blockedWebsites,
       });
-      print('🌐 [LAUNCH] Website monitoring synced: ${blockedWebsites.length} sites');
+      print(
+        '🌐 [LAUNCH] Website monitoring synced: ${blockedWebsites.length} sites',
+      );
     }
   } catch (e) {
     print('❌ [LAUNCH] Error initializing services: $e');
@@ -55,20 +55,39 @@ class QuitApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'QUIT App',
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: Colors.black,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.white,
-          brightness: Brightness.dark,
-        ),
+    return ShadcnApp.router(
+      darkTheme: ThemeData(colorScheme: ColorSchemes.darkGreen, radius: 0.7),
+      theme: ThemeData(colorScheme: ColorSchemes.darkGreen, radius: 0.7),
+
+      routerConfig: GoRouter(
+        routes: [
+          GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
+          GoRoute(
+            path: '/blocked',
+            builder: (context, state) => const BlockedScreen(),
+          ),
+          GoRoute(
+            path: '/first_time_gamble',
+            builder: (context, state) => const FirstTimeGambleScreen(),
+          ),
+          GoRoute(
+            path: '/blackjack',
+            builder: (context, state) => const BlackjackScreen(),
+          ),
+          GoRoute(
+            path: '/roulette',
+            builder: (context, state) => const RouletteScreen(),
+          ),
+          GoRoute(
+            path: '/mines',
+            builder: (context, state) => const MinesScreen(),
+          ),
+          GoRoute(
+            path: '/blocking_selection',
+            builder: (context, state) => const BlockingSelectionScreen(),
+          ),
+        ],
       ),
-      home: const HomeScreen(),
-      routes: {
-        '/blocked': (context) => const BlockedScreen(),
-        '/first_time_gamble': (context) => const FirstTimeGambleScreen(),
-      },
     );
   }
 }
@@ -98,8 +117,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Services should already be running from main()
-      // Just sync state if needed
       _syncServicesIfNeeded();
     }
   }
@@ -110,7 +127,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      // Update app monitoring
       List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
       if (blockedApps.isNotEmpty) {
         await platform.invokeMethod('updateBlockedApps', {
@@ -125,7 +141,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await platform.invokeMethod('updateBlockedWebsites', {
           'blockedWebsites': blockedWebsites,
         });
-        print('🌐 [RESUME] Updated website monitoring: ${blockedWebsites.length} sites');
+        print(
+          '🌐 [RESUME] Updated website monitoring: ${blockedWebsites.length} sites',
+        );
       }
     } catch (e) {
       print('❌ [RESUME] Error syncing services: $e');
@@ -135,117 +153,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
+      child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Main settings button
-            GestureDetector(
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const BlockingSelectionScreen(),
-                  ),
-                );
-                // Sync services when returning from settings
+            const SizedBox(height: 40),
+            OutlineButton(
+              onPressed: () async {
+                await context.push('/blocking_selection');
                 _syncServicesIfNeeded();
               },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 100),
-                width: 150,
-                height: 150,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)],
-                ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.block, size: 80, color: Colors.black),
-              ),
+              density: ButtonDensity.icon,
+              child: const Icon(LucideIcons.shieldBan),
             ),
-
-            const SizedBox(height: 40),
-
-            // Game buttons
+            // Game buttons - PURE SHADCN
             Wrap(
               spacing: 16,
               runSpacing: 16,
               alignment: WrapAlignment.center,
               children: [
-                // Blackjack button
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const BlackjackScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.casino, size: 24),
-                  label: const Text(
-                    'Blackjack',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
-                    ),
-                  ),
+                GameCard(
+                  icon: LucideIcons.spade,
+                  label: 'Blackjack',
+                  variant: GameCardVariant.primary,
+                  onClick: () => context.push('/blackjack'),
                 ),
-
-                // Roulette button
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const RouletteScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.album, size: 24),
-                  label: const Text(
-                    'Roulette',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red[900],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
-                    ),
-                  ),
+                GameCard(
+                  icon: LucideIcons.disc,
+                  label: 'Roulette',
+                  variant: GameCardVariant.destructive,
+                  onClick: () => context.push('/roulette'),
                 ),
-
-                // Mines button
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MinesScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.grid_on, size: 24),
-                  label: const Text(
-                    'Mines',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey[850],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 16,
-                    ),
-                  ),
+                GameCard(
+                  icon: LucideIcons.grid3x3,
+                  label: 'Mines',
+                  variant: GameCardVariant.success,
+                  onClick: () => context.push('/mines'),
                 ),
               ],
             ),
@@ -256,7 +199,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-// TABBED INTERFACE: Apps + Websites
 class BlockingSelectionScreen extends StatefulWidget {
   const BlockingSelectionScreen({super.key});
 
@@ -265,42 +207,50 @@ class BlockingSelectionScreen extends StatefulWidget {
       _BlockingSelectionScreenState();
 }
 
-class _BlockingSelectionScreenState extends State<BlockingSelectionScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+class _BlockingSelectionScreenState extends State<BlockingSelectionScreen> {
+  int _index = 0;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Block Apps & Websites'),
-        backgroundColor: Colors.black,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.redAccent,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.grey,
-          tabs: const [
-            Tab(icon: Icon(Icons.apps), text: 'Apps'),
-            Tab(icon: Icon(Icons.language), text: 'Websites'),
+      headers: [
+        AppBar(
+          title: const Text('Block Apps & Websites'),
+          leading: [
+            OutlineButton(
+              onPressed: () => context.pop(),
+              density: ButtonDensity.icon,
+              child: const Icon(LucideIcons.arrowLeft),
+            ),
           ],
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [AppsSelectionScreen(), WebsitesSelectionScreen()],
+        const Divider(),
+      ],
+      child: Column(
+        children: [
+          Tabs(
+            index: _index,
+            onChanged: (index) {
+              setState(() {
+                _index = index;
+              });
+            },
+            children: const [
+              TabItem(child: Text('Apps')),
+              TabItem(child: Text('Websites')),
+            ],
+          ),
+          const Divider(),
+          Expanded(
+            child: IndexedStack(
+              index: _index,
+              children: const [
+                AppsSelectionScreen(),
+                WebsitesSelectionScreen(),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
