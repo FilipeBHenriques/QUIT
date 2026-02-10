@@ -125,20 +125,21 @@ class _MinesScreenState extends State<MinesScreen>
   }
 
   Widget _buildTopBar() {
-    return Container(
-      height:
-          MediaQuery.of(context).size.height *
-          MinesConstants.topBarHeightPercent,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(
-              Icons.arrow_back,
-              color: MinesConstants.textColorPrimary,
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
-            onPressed: () => Navigator.pop(context),
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
           ),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -176,9 +177,6 @@ class _MinesScreenState extends State<MinesScreen>
     final canReset = _game.isGameOver;
 
     return Container(
-      height:
-          MediaQuery.of(context).size.height *
-          MinesConstants.bottomControlsHeightPercent,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: MinesConstants.backgroundColor,
@@ -291,7 +289,9 @@ class _MinesScreenState extends State<MinesScreen>
             style: ElevatedButton.styleFrom(
               backgroundColor: MinesConstants.buttonColorPrimary,
               foregroundColor: MinesConstants.backgroundColor,
-              padding: const EdgeInsets.symmetric(vertical: 18),
+              padding: const EdgeInsets.symmetric(
+                vertical: 20,
+              ), // Matched padding
               elevation: 8,
               shadowColor: MinesConstants.winColor.withOpacity(0.5),
               shape: RoundedRectangleBorder(
@@ -334,7 +334,7 @@ class _MinesScreenState extends State<MinesScreen>
       style: OutlinedButton.styleFrom(
         foregroundColor: MinesConstants.textColorPrimary,
         side: const BorderSide(color: MinesConstants.tileBorderColor, width: 2),
-        padding: const EdgeInsets.symmetric(vertical: 18),
+        padding: const EdgeInsets.symmetric(vertical: 20), // Matched padding
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(MinesConstants.tileBorderRadius),
         ),

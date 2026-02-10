@@ -68,7 +68,13 @@ class QuitApp extends StatelessWidget {
           ),
           GoRoute(
             path: '/first_time_gamble',
-            builder: (context, state) => const FirstTimeGambleScreen(),
+            builder: (context, state) {
+              final params = state.uri.queryParameters;
+              return FirstTimeGambleScreen(
+                packageName: params['packageName'] ?? '',
+                appName: params['appName'] ?? '',
+              );
+            },
           ),
           GoRoute(
             path: '/blackjack',

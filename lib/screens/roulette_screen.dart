@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:quit/game_result.dart';
 import '../games/roulette_game.dart';
 import '../games/roulette_constants.dart';
+import 'dart:ui' show FontFeature;
 
 class RouletteScreen extends StatefulWidget {
   const RouletteScreen({super.key});
@@ -80,7 +82,7 @@ class _RouletteScreenState extends State<RouletteScreen>
     if (!isLoaded) {
       return const Scaffold(
         backgroundColor: Colors.black,
-        body: Center(child: CircularProgressIndicator(color: Colors.white)),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -115,10 +117,17 @@ class _RouletteScreenState extends State<RouletteScreen>
       padding: const EdgeInsets.all(16.0),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
           ),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               children: [
@@ -126,21 +135,22 @@ class _RouletteScreenState extends State<RouletteScreen>
                   'ROULETTE',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white,
                     fontSize: 20,
                     fontWeight: FontWeight.w300,
                     letterSpacing: 4,
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'BETTING: $timeString',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.greenAccent.withOpacity(0.8),
+                  style: const TextStyle(
+                    color: Color(0xFF22C55E), // Green
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 2,
+                    fontFeatures: [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
@@ -153,11 +163,8 @@ class _RouletteScreenState extends State<RouletteScreen>
   }
 
   Widget _buildMessagesArea() {
-    // This will show the game messages (from the RouletteGame)
-    // The game itself will render text components on the canvas
-    // This is just a spacer for layout
     return Container(
-      height: 80,
+      height: 60,
       alignment: Alignment.center,
       child: StreamBuilder<String>(
         stream: _game.messageStream,
@@ -165,18 +172,11 @@ class _RouletteScreenState extends State<RouletteScreen>
         builder: (context, snapshot) {
           return Text(
             snapshot.data ?? '',
-            style: TextStyle(
-              color: Colors.white,
+            style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w300,
               letterSpacing: 4,
-              shadows: [
-                Shadow(
-                  color: Colors.white.withOpacity(0.5),
-                  offset: Offset.zero,
-                  blurRadius: 20,
-                ),
-              ],
+              color: Colors.white,
             ),
           );
         },
@@ -186,13 +186,8 @@ class _RouletteScreenState extends State<RouletteScreen>
 
   Widget _buildBottomControls() {
     return Container(
+      color: Colors.black, // Dark background for controls
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        border: Border(
-          top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
-        ),
-      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -215,7 +210,10 @@ class _RouletteScreenState extends State<RouletteScreen>
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
                     side: const BorderSide(color: Colors.white),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   child: const Text('CLEAR'),
                 ),
@@ -230,7 +228,10 @@ class _RouletteScreenState extends State<RouletteScreen>
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                   child: const Text(
                     'SPIN',
@@ -253,11 +254,17 @@ class _RouletteScreenState extends State<RouletteScreen>
       children: [
         Row(
           children: [
-            _buildBetButton(BetType.white(), Colors.white),
+            // Red (Visual Red -> Logic White)
+            _buildBetButton(BetType.white(), const Color(0xFFEF4444)), // Red
             const SizedBox(width: 8),
+            // Black
             _buildBetButton(BetType.black(), Colors.black),
             const SizedBox(width: 8),
-            _buildBetButton(BetType.straight(0), Colors.green),
+            // Green (0)
+            _buildBetButton(
+              BetType.straight(0),
+              const Color(0xFF22C55E),
+            ), // Green
           ],
         ),
         const SizedBox(height: 8),
@@ -283,45 +290,49 @@ class _RouletteScreenState extends State<RouletteScreen>
     );
   }
 
-  Widget _buildBetButton(BetType betType, [Color color = Colors.black]) {
+  Widget _buildBetButton(BetType betType, [Color? color]) {
     final isSelected = selectedBet?.name == betType.name;
 
-    // Determine text color based on background
-    final bool isWhiteBg = color.value == Colors.white.value;
-    final Color textColor = isWhiteBg ? Colors.black : Colors.white;
+    // Default to secondary styled button if no color provided (for even/odd/high/low)
+    final bool isColored = color != null;
+    final backgroundColor =
+        color ?? const Color(0xFF27272A); // muted/secondary color
+    final textColor = Colors.white;
 
     return Expanded(
       child: AnimatedBuilder(
         animation: _borderAnimation,
         builder: (context, child) {
-          // Animated border opacity
           final borderColor = isSelected
-              ? Colors.greenAccent.withOpacity(_borderAnimation.value)
+              ? const Color(0xFF22C55E).withOpacity(_borderAnimation.value)
               : Colors.transparent;
 
           return ElevatedButton(
             onPressed: () => _game.placeBet(betType),
             style: ElevatedButton.styleFrom(
-              backgroundColor: color,
+              backgroundColor: backgroundColor,
               foregroundColor: textColor,
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(vertical: 16),
               elevation: isSelected ? 8 : 2,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
-                side: BorderSide(color: borderColor, width: isSelected ? 3 : 0),
+                side: BorderSide(color: borderColor, width: isSelected ? 2 : 0),
               ),
               shadowColor: isSelected
-                  ? Colors.greenAccent.withOpacity(_borderAnimation.value * 0.5)
+                  ? const Color(
+                      0xFF22C55E,
+                    ).withOpacity(_borderAnimation.value * 0.5)
                   : null,
             ),
             child: Text(
               betType.name.toUpperCase(),
-              style: TextStyle(
-                fontSize: 12,
+              style: const TextStyle(
+                fontSize: 10,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1,
-                color: textColor,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           );
         },

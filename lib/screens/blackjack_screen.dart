@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../games/blackjack_game.dart';
 import 'package:quit/game_result.dart';
+import 'dart:ui' show FontFeature;
 
 class BlackjackScreen extends StatefulWidget {
   const BlackjackScreen({super.key});
@@ -48,7 +50,7 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
     if (!isLoaded) {
       return const Scaffold(
         backgroundColor: Colors.black,
-        body: Center(child: CircularProgressIndicator(color: Colors.white)),
+        body: Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -66,46 +68,48 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
 
             // Top bar with bet amount
             Positioned(
-              top: 10,
+              top: 16,
               left: 0,
               right: 0,
               child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.greenAccent.withOpacity(0.3),
-                      width: 1,
+                child: IntrinsicWidth(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
                     ),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'BLACKJACK',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w300,
-                          letterSpacing: 4,
-                        ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.8),
+                      border: Border.all(
+                        color: const Color(0xFF22C55E).withOpacity(0.5),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'BETTING: $timeString',
-                        style: TextStyle(
-                          color: Colors.greenAccent.withOpacity(0.8),
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 2,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'BLACKJACK',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 4,
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Text(
+                          'BETTING: $timeString',
+                          style: const TextStyle(
+                            color: Color(0xFF22C55E),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -113,48 +117,54 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
 
             // Game controls overlay
             Positioned(
-              bottom: 20,
-              left: 0,
-              right: 0,
+              bottom: 32,
+              left: 24,
+              right: 24,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // Hit button
-                  ElevatedButton(
-                    onPressed: () => game.hit(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 40,
-                        vertical: 20,
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => game.hit(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF22C55E), // Green
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    ),
-                    child: const Text(
-                      'HIT',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                      child: const Text(
+                        'HIT',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
 
-                  const SizedBox(width: 20),
+                  const SizedBox(width: 24),
 
                   // Stand button
-                  ElevatedButton(
-                    onPressed: () => game.stand(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 40,
-                        vertical: 20,
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => game.stand(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFEF4444), // Red
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 20),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                    ),
-                    child: const Text(
-                      'STAND',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                      child: const Text(
+                        'STAND',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -164,11 +174,18 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
 
             // Close button
             Positioned(
-              top: 10,
-              right: 10,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white, size: 32),
-                onPressed: () => Navigator.pop(context),
+              top: 16,
+              right: 16,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
               ),
             ),
           ],

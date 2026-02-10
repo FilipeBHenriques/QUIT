@@ -279,6 +279,8 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+
+
     private fun updateTimerConfig(dailyLimitSeconds: Int) {
         val intent = Intent(this, MonitoringService::class.java).apply {
             putExtra("action", "update_timer")

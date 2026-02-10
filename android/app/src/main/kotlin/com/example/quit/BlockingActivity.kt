@@ -10,6 +10,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.util.Log
 import android.net.Uri
+import android.widget.Toast
 
 class BlockingActivity : FlutterActivity() {
 
@@ -176,21 +177,24 @@ class BlockingActivity : FlutterActivity() {
     }
 
     private fun launchApp(packageName: String) {
-    try {
-        val intent = packageManager.getLaunchIntentForPackage(packageName)
-        if (intent != null) {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-            finish() // Close blocking activity
-        } else {
-            Log.e("BlockingActivity", "No launch intent for: $packageName")
+        try {
+            val intent = packageManager.getLaunchIntentForPackage(packageName)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                finish() // Close blocking activity
+                Log.d("BlockingActivity", "🚀 Launching app: $packageName")
+            } else {
+                Log.e("BlockingActivity", "No launch intent for: $packageName")
+                Toast.makeText(this, "Could not launch $packageName", Toast.LENGTH_SHORT).show()
+                goToHomeScreen() // Fallback
+            }
+        } catch (e: Exception) {
+            Log.e("BlockingActivity", "Error launching app: $packageName", e)
+            Toast.makeText(this, "Error launching app", Toast.LENGTH_SHORT).show()
             goToHomeScreen() // Fallback
         }
-    } catch (e: Exception) {
-        Log.e("BlockingActivity", "Error launching app: $packageName", e)
-        goToHomeScreen() // Fallback
     }
-}
 
     private fun launchUrl(url: String) {
         try {

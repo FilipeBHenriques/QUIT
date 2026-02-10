@@ -234,16 +234,22 @@ class MonitoringService : Service() {
 
 
     private fun showFirstTimeGambleScreen(foregroundApp: String) {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
+        val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
+
         val intent = Intent(this, BlockingActivity::class.java).apply {
             putExtra("packageName", foregroundApp)
             putExtra("appName", getAppLabel(foregroundApp))
             putExtra("screenType", "first_time_gamble")
+            putExtra("dailyLimitSeconds", dailyLimitSeconds)
+            putExtra("remainingSeconds", remainingSeconds)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
         startActivity(intent)
-        Log.d(TAG, "🎰 Showing first time gamble screen for $foregroundApp")
+        Log.d(TAG, "🎰 Showing first time gamble screen for $foregroundApp (rem: $remainingSeconds)")
     }
 
     private fun handleWebsiteVisit(domain: String, browserPackage: String?) {
@@ -495,7 +501,9 @@ class MonitoringService : Service() {
                 
                 editor.apply()
                 
-                lastSaveTime = currentTime
+                // CRITICAL FIX: Only advance lastSaveTime by the amount we actually accounted for (integers)
+                // This prevents losing fractional seconds (e.g. 1.9s -> 1s accounted, 0.9s lost if we reset to currentTime)
+                lastSaveTime += (elapsedSinceSave * 1000)
                 
                 // Update notification with current remaining time
                 updateNotification()

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:quit/usage_timer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -47,7 +48,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
             _handleTimerReset();
             return;
           }
-          
+
           // Check if bonus cooldown just finished
           if (_isBonusCooldown && _usageTimer!.timeUntilNextBonus == null) {
             print('🎁 Bonus cooldown finished - relaunching app');
@@ -63,8 +64,6 @@ class _BlockedScreenState extends State<BlockedScreen> {
     _usageTimer = UsageTimer(prefs);
     await _usageTimer?.checkAndResetIfNeeded();
   }
-
-
 
   Future<void> _loadBlockedAppInfo() async {
     try {
@@ -90,10 +89,6 @@ class _BlockedScreenState extends State<BlockedScreen> {
 
         _loading = false;
       });
-
-      print(
-        '📦 Blocked: $packageName (limit: $dailyLimit s, remaining: $remaining s, bonusCooldown: $bonusCooldown)',
-      );
     } catch (e) {
       print('❌ Error loading blocked app info: $e');
       setState(() => _loading = false);
@@ -157,15 +152,14 @@ class _BlockedScreenState extends State<BlockedScreen> {
       if (_blockedPackageName == null) _closeActivity();
       return;
     }
-    
+
     _isRedirecting = true;
     print('🔁 Bonus ready - relaunching: $_blockedPackageName');
-    
+
     try {
       await navigationChannel.invokeMethod('launchApp', {
         'packageName': _blockedPackageName,
       });
-      // Don't flip _isRedirecting back immediately to prevent race conditions in the timer loop
     } catch (e) {
       print('❌ Error relaunching app: $e');
       _closeActivity();
@@ -185,315 +179,214 @@ class _BlockedScreenState extends State<BlockedScreen> {
   Widget build(BuildContext context) {
     final timeUntilReset = _usageTimer?.timeUntilReset() ?? Duration.zero;
     final remainingFormatted = _usageTimer?.remainingFormatted ?? "0:00";
-    
-    // Calculate bonus countdown directly from usage timer
-    // If null (meaning ready or not started), show 0:00
+
     final timeUntilBonus = _usageTimer?.timeUntilNextBonus ?? Duration.zero;
-    final bonusCountdownFormatted = _usageTimer?.formatDuration(timeUntilBonus) ?? "0:00";
+    final bonusCountdownFormatted =
+        _usageTimer?.formatDuration(timeUntilBonus) ?? "0:00";
 
     final dailyLimitFormatted = _usageTimer?.formatSeconds(_dailyLimitSeconds);
+
+    // Determine colors based on state
+    final Color warningColor = (_isTimeLimitExceeded || _isBonusCooldown)
+        ? const Color(0xFFF97316) // Orange
+        : const Color(0xFFEF4444); // Red
 
     return PopScope(
       canPop: false,
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: SafeArea(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Close button (only show if not total block, otherwise user must go home via system)
-                        // Actually, user should always be able to go home, but we'll label it "Go Home" or keep X
-                        if (!_isTotalBlock)
-                          Align(
-                            alignment: Alignment.topRight,
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.close,
-                                color: Colors.white,
-                                size: 32,
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Close button
+                      if (!_isTotalBlock)
+                        Align(
+                          alignment: Alignment.topRight,
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              shape: const CircleBorder(),
+                              padding: const EdgeInsets.all(12),
+                              foregroundColor: Colors.white,
+                              side: BorderSide(
+                                color: Colors.white.withOpacity(0.2),
                               ),
-                              onPressed: _closeActivity,
                             ),
+                            child: const Icon(Icons.close, size: 20),
+                            onPressed: _closeActivity,
                           ),
-                        const Spacer(),
-
-                        // Icon
-                        Icon(
-                          _isBonusCooldown ? Icons.timer_outlined : Icons.block,
-                          size: 100,
-                          color: _isTimeLimitExceeded || _isBonusCooldown
-                              ? Colors.orange
-                              : Colors.red,
                         ),
-                        const SizedBox(height: 32),
+                      const Spacer(),
 
-                        Text(
-                          _isTotalBlock
-                              ? 'Website Blocked!'
-                              : (_isBonusCooldown
+                      // Icon
+                      Icon(
+                        _isBonusCooldown ? Icons.timer : Icons.block,
+                        size: 100,
+                        color: warningColor,
+                      ),
+                      const SizedBox(height: 32),
+
+                      Text(
+                        _isTotalBlock
+                            ? 'Website Blocked!'
+                            : (_isBonusCooldown
                                   ? 'Daily Time Exhausted'
                                   : (_isTimeLimitExceeded
                                         ? 'Time Limit Reached!'
                                         : 'App Blocked!')),
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                          textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
-                        const SizedBox(height: 16),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
 
-                        // App name
+                      // App name
+                      Text(
+                        _appName ?? _blockedPackageName ?? 'Unknown App',
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.white.withOpacity(0.7),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 48),
+
+                      // BONUS COOLDOWN MODE
+                      if (_isBonusCooldown) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildInfoCard(
+                                label: 'Daily Remaining',
+                                value: remainingFormatted,
+                                valueColor: const Color(0xFFEF4444),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildInfoCard(
+                                label: 'Resets In',
+                                value:
+                                    _usageTimer?.formatDuration(
+                                      timeUntilReset,
+                                    ) ??
+                                    '',
+                                valueColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Bonus timer
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF97316).withOpacity(0.1),
+                            border: Border.all(color: const Color(0xFFF97316)),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            children: [
+                              const Text(
+                                'Next bonus in',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                bonusCountdownFormatted,
+                                style: const TextStyle(
+                                  fontSize: 48,
+                                  color: Color(0xFFF97316), // Orange
+                                  fontWeight: FontWeight.bold,
+                                  fontFeatures: [FontFeature.tabularFigures()],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                '💡 You get 5 bonus minutes every hour',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white60,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      // TIME LIMIT MODE
+                      if (_isTimeLimitExceeded && !_isBonusCooldown) ...[
                         Text(
-                          _appName ?? _blockedPackageName ?? 'Unknown App',
-                          style: const TextStyle(
-                            fontSize: 24,
-                            color: Colors.white70,
+                          'Daily limit: $dailyLimitFormatted',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white.withOpacity(0.5),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildInfoCard(
+                                label: 'Time Remaining',
+                                value: remainingFormatted,
+                                valueColor: const Color(0xFFF97316),
+                                borderColor: const Color(0xFFF97316),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildInfoCard(
+                                label: 'Restored In',
+                                value:
+                                    _usageTimer?.formatDuration(
+                                      timeUntilReset,
+                                    ) ??
+                                    '',
+                                valueColor: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
+                      // NORMAL BLOCK MODE
+                      if (!_isTimeLimitExceeded &&
+                          !_isBonusCooldown &&
+                          !_isTotalBlock) ...[
+                        Text(
+                          'This app has been blocked.\nYou cannot access it right now.',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.white.withOpacity(0.7),
                           ),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 48),
 
-                        // BONUS COOLDOWN MODE - Show both daily timer (0:00) and bonus timer
-                        if (_isBonusCooldown) ...[
-                          // Daily timer (exhausted)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[900],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.red, width: 2),
-                            ),
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'Daily Time Remaining',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white60,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  remainingFormatted,
-                                  style: const TextStyle(
-                                    fontSize: 48,
-                                    color: Colors.red,
-                                    fontWeight: FontWeight.bold,
-                                    fontFeatures: [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Daily reset countdown
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[900],
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'Daily Limit Resets In',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white60,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _usageTimer?.formatDuration(timeUntilReset) ??
-                                      '',
-                                  style: const TextStyle(
-                                    fontSize: 32,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontFeatures: [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Bonus timer
-                          Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: Colors.orange[900],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.orange,
-                                width: 2,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'Next bonus in',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.white70,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  bonusCountdownFormatted,
-                                  style: const TextStyle(
-                                    fontSize: 48,
-                                    color: Colors.orange,
-                                    fontWeight: FontWeight.bold,
-                                    fontFeatures: [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                const Text(
-                                  '💡 You get 5 bonus minutes every hour',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white60,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-
-                        // TIME LIMIT MODE (daily time available but exhausted)
-                        if (_isTimeLimitExceeded && !_isBonusCooldown) ...[
-                          // Daily limit info
-                          Text(
-                            'Daily limit: $dailyLimitFormatted',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[400],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Remaining time display (should be 0:00)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[900],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.orange,
-                                width: 2,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'Time Remaining',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white60,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  remainingFormatted,
-                                  style: const TextStyle(
-                                    fontSize: 48,
-                                    color: Colors.orange,
-                                    fontWeight: FontWeight.bold,
-                                    fontFeatures: [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-
-                          // Countdown to reset
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[900],
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'Access Restored In',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white60,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _usageTimer?.formatDuration(timeUntilReset) ??
-                                      '',
-                                  style: const TextStyle(
-                                    fontSize: 32,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontFeatures: [
-                                      FontFeature.tabularFigures(),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-
-                        // NORMAL BLOCK MODE (no timer)
-                        if (!_isTimeLimitExceeded && !_isBonusCooldown && !_isTotalBlock) ...[
-                          const Text(
-                            'This app has been blocked.\nYou cannot access it right now.',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.white60,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 48),
-
-                          ElevatedButton(
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
                             onPressed: _launchUnblockedApp,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.white,
                               foregroundColor: Colors.black,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 32,
-                                vertical: 16,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
                             child: const Text(
@@ -504,62 +397,116 @@ class _BlockedScreenState extends State<BlockedScreen> {
                               ),
                             ),
                           ),
-                        ],
-
-                        // WEBSITE / TOTAL BLOCK MODE
-                        if (_isTotalBlock) ...[
-                          const Text(
-                            'Strict blocking is active for this content.',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.redAccent,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 48),
-                          ElevatedButton.icon(
-                            onPressed: _launchSafeSearch,
-                            icon: const Icon(Icons.search),
-                            label: const Text(
-                              'Go to Google Search',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.black,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 40,
-                                vertical: 20,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          TextButton.icon(
-                            onPressed: _closeActivity,
-                            icon: const Icon(Icons.home, color: Colors.white60),
-                            label: const Text(
-                              'Go to Home Screen',
-                              style: TextStyle(
-                                color: Colors.white60,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ],
-
-                        const Spacer(),
+                        ),
                       ],
-                    ),
+
+                      // WEBSITE / TOTAL BLOCK MODE
+                      if (_isTotalBlock) ...[
+                        const Text(
+                          'Strict blocking is active for this content.',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFFEF4444),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 48),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _launchSafeSearch,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFEF4444),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.search),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Go to Google Search',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: _closeActivity,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: const BorderSide(color: Colors.white),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.home),
+                                SizedBox(width: 8),
+                                Text('Go to Home Screen'),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+
+                      const Spacer(),
+                    ],
                   ),
                 ),
-        ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard({
+    required String label,
+    required String value,
+    required Color valueColor,
+    Color? borderColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF27272A), // Dark zinc bg
+        border: Border.all(color: borderColor ?? Colors.transparent),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 32,
+              color: valueColor,
+              fontWeight: FontWeight.bold,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ),
     );
   }

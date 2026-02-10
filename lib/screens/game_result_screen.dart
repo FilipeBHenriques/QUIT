@@ -125,8 +125,8 @@ class _GameResultScreenState extends State<GameResultScreen>
             'timer_last_reset',
             DateTime.now().millisecondsSinceEpoch,
           );
-          await prefs.setBool('timer_first_choice_made', true);
         }
+        await prefs.setBool('timer_first_choice_made', true);
 
         await navigationChannel.invokeMethod('launchApp', {
           'packageName': widget.packageName,
