@@ -139,6 +139,7 @@ class MonitoringService : Service() {
             .putInt("flutter.used_today_seconds", 0)
             .remove("flutter.timer_last_reset")
             .remove("flutter.daily_time_ran_out_timestamp") // Clear the ran out timestamp
+            .remove("flutter.timer_first_choice_made") // Reset choice flag to show gamble screen again
             // NOTE: DON'T reset last_bonus_time ← IMPORTANT
             .apply()
     }
@@ -314,10 +315,16 @@ class MonitoringService : Service() {
         if (dailyLimitSeconds > 0 && cachedBlockedApps.contains(foregroundApp)) {
             val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
             val dailyRanOutTimestamp = prefs.getLong("flutter.daily_time_ran_out_timestamp", 0L)
+            val hasNmadeChoice = prefs.getBoolean("flutter.timer_first_choice_made", false)
             
-            Log.d(TAG, "🎯 Blocked app detected: $foregroundApp (remaining: ${remainingSeconds}s, dailyRanOut: $dailyRanOutTimestamp)")
+            Log.d(TAG, "🎯 Blocked app detected: $foregroundApp (remaining: ${remainingSeconds}s, dailyRanOut: $dailyRanOutTimestamp, madeChoice: $hasNmadeChoice)")
 
-            if (remainingSeconds > 0) {
+            // Check if user hasn't made their first choice yet (e.g., after reset)
+            if (!hasNmadeChoice && remainingSeconds > 0) {
+                // Show gamble screen for first-time choice after reset
+                Log.d(TAG, "🎰 First time after reset - showing gamble screen")
+                showFirstTimeGambleScreen(foregroundApp)
+            } else if (remainingSeconds > 0) {
                 // Daily time still available - allow usage and track time
                 currentlyBlockedApp = foregroundApp
                 startTimeTracking()

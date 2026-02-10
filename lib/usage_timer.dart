@@ -171,6 +171,9 @@ class UsageTimer {
     await _prefs.setInt(_keyUsedToday, 0); // Reset used time
     await _prefs.remove(_keyLastReset); // Clear timestamp - wait for next usage
     await _prefs.remove(_keyDailyTimeRanOut); // Clear daily ran out timestamp
+    await _prefs.remove(
+      'timer_first_choice_made',
+    ); // Reset choice flag to show gamble screen again
     // NOTE: Don't reset _keyLastBonus - it's independent
     print('⏰ Timer reset: ${dailyLimitSeconds}s available, countdown cleared');
   }

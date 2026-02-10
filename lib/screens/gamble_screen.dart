@@ -23,6 +23,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
   int dailyLimitSeconds = 0;
   int remainingSeconds = 0;
   int bonusSeconds = 0;
+  bool isBonusTime = false;
 
   @override
   void initState() {
@@ -35,13 +36,18 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
       final info = await blockedAppChannel.invokeMethod('getBlockedAppInfo');
       final prefs = await SharedPreferences.getInstance();
       final bonusAmount = prefs.getInt('bonus_amount_seconds') ?? 300;
-      
+      final dailyRanOutTimestamp =
+          prefs.getInt('daily_time_ran_out_timestamp') ?? 0;
+      final remaining = info['remainingSeconds'] ?? 0;
+
       setState(() {
         packageName = info['packageName'] ?? '';
         appName = info['appName'] ?? '';
         dailyLimitSeconds = info['dailyLimitSeconds'] ?? 0;
-        remainingSeconds = info['remainingSeconds'] ?? 0;
-        bonusSeconds = bonusAmount; // Show the bonus amount
+        remainingSeconds = remaining;
+        // Show bonus time if daily ran out, otherwise show remaining daily time
+        isBonusTime = dailyRanOutTimestamp > 0;
+        bonusSeconds = isBonusTime ? bonusAmount : remaining;
       });
     } catch (e) {
       print('❌ Error loading blocked app info: $e');
@@ -59,24 +65,31 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
   Future<bool> _grantBonusAndMarkChoice() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // Grant the bonus time if this is a bonus scenario
-      final dailyRanOutTimestamp = prefs.getInt('daily_time_ran_out_timestamp') ?? 0;
+      final dailyRanOutTimestamp =
+          prefs.getInt('daily_time_ran_out_timestamp') ?? 0;
       bool bonusGranted = false;
-      
+
       if (dailyRanOutTimestamp > 0) {
         // This is a bonus scenario - grant the bonus
-        final bonusSeconds = prefs.getInt('bonus_amount_seconds') ?? 300; // Default 5 minutes
+        final bonusSeconds =
+            prefs.getInt('bonus_amount_seconds') ?? 300; // Default 5 minutes
         final currentRemaining = prefs.getInt('remaining_seconds') ?? 0;
         final newRemaining = currentRemaining + bonusSeconds;
-        
+
         await prefs.setInt('remaining_seconds', newRemaining);
-        await prefs.setInt('last_bonus_time', DateTime.now().millisecondsSinceEpoch);
-        
-        print('🎁 Bonus granted! Added ${bonusSeconds}s. Remaining: ${currentRemaining}s → ${newRemaining}s');
+        await prefs.setInt(
+          'last_bonus_time',
+          DateTime.now().millisecondsSinceEpoch,
+        );
+
+        print(
+          '🎁 Bonus granted! Added ${bonusSeconds}s. Remaining: ${currentRemaining}s → ${newRemaining}s',
+        );
         bonusGranted = true;
       }
-      
+
       // Start the reset timer countdown if not already started
       final lastReset = prefs.getInt('timer_last_reset') ?? 0;
       if (lastReset == 0) {
@@ -85,12 +98,12 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
           DateTime.now().millisecondsSinceEpoch,
         );
       }
-      
+
       await prefs.setBool(
         'timer_first_choice_made',
         true,
       ); // Mark that user made a choice
-      
+
       return bonusGranted;
     } catch (e) {
       print('❌ Error granting bonus: $e');
@@ -120,7 +133,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
     // Grant bonus and mark choice before starting the game
     await _grantBonusAndMarkChoice();
     print('🎰 User chose to gamble - starting game');
-    
+
     // Navigate to game and wait for result
     final result = await Navigator.push<GameResult>(
       context,
@@ -208,14 +221,15 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        '(BONUS)',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.amber,
+                      if (isBonusTime)
+                        const Text(
+                          '(BONUS)',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.amber,
+                          ),
                         ),
-                      ),
                       const SizedBox(height: 8),
                       const Text(
                         'available to use or gamble',
