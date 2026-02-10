@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:quit/widgets/game_card.dart';
 import 'package:quit/game_result.dart';
 import 'package:quit/usage_timer.dart';
 import 'package:quit/screens/blackjack_screen.dart';
@@ -174,6 +173,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
   }
 
   Future<void> _goToGambleGame(Widget gameScreen) async {
+    await _grantBonusAndMarkChoice();
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => gameScreen),
@@ -223,14 +223,20 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    // Use state variables logic as requested
-    // If bonus is active, show bonus amount? Or show remaining?
-    // The user's code snippet: bonusSeconds = isBonusTime ? bonusAmount : remaining;
-    // So we should display bonusSeconds if we want to show "time available"
-
     final displaySeconds = isBonusTime ? bonusSeconds : remainingSeconds;
+
+    // Shiny Gradient (Gold for bonus, White for normal)
+    final shinyGradient = LinearGradient(
+      colors: [
+        isBonusTime ? const Color(0xFFFBBF24) : Colors.white,
+        isBonusTime ? const Color(0xFFFFF7ED) : Colors.white70,
+        isBonusTime ? const Color(0xFFFBBF24) : Colors.white,
+      ],
+      stops: const [0.0, 0.5, 1.0],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      transform: const GradientRotation(0.5),
+    );
 
     if (_loading) {
       return const Scaffold(
@@ -244,154 +250,127 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24.0,
+              vertical: 16.0,
+            ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // App info card
-                Container(
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF27272A),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white10),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(
-                        Icons.access_time,
-                        size: 64,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        // Use local appName
-                        appName.isNotEmpty ? appName : 'Blocked App',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
+                // Compact Header
+                const Icon(
+                  Icons.access_time_outlined,
+                  size: 40,
+                  color: Colors.white24,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  appName.isNotEmpty ? appName.toUpperCase() : 'APP BLOCKED',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.white38,
+                    letterSpacing: 2,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
 
                 const SizedBox(height: 32),
 
-                // Time available card
-                Container(
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: isBonusTime
-                        ? const Color(0xFFFBBF24).withOpacity(0.1)
-                        : const Color(0xFF27272A),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isBonusTime
-                          ? const Color(0xFFFBBF24)
-                          : Colors.white10,
+                // Main Timer Card
+                const Text(
+                  'AVAILABLE TIME',
+                  style: TextStyle(
+                    color: Colors.white30,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 3,
+                  ),
+                ),
+                const SizedBox(height: 4),
+
+                ShaderMask(
+                  shaderCallback: (bounds) =>
+                      shinyGradient.createShader(bounds),
+                  child: Text(
+                    _formatTime(displaySeconds),
+                    style: const TextStyle(
+                      fontSize: 80,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                      letterSpacing: -3,
                     ),
                   ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'You have',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white.withOpacity(0.7),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _formatTime(displaySeconds),
-                        style: TextStyle(
-                          fontSize: 56,
-                          fontWeight: FontWeight.bold,
-                          color: isBonusTime
-                              ? const Color(0xFFFBBF24)
-                              : Colors.white,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                      if (isBonusTime) ...[
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFBBF24),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Text(
-                            'BONUS',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      Text(
-                        'available to use or gamble',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white.withOpacity(0.7),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
 
-                const SizedBox(height: 40),
+                if (isBonusTime) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFBBF24),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'BONUS READY',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.black,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
+                ],
 
-                // Gamble offer
+                const SizedBox(height: 48),
+
+                // Games Section
                 const Text(
-                  'Want to win more time?',
+                  'CHOOSE YOUR PATH',
                   style: TextStyle(
-                    fontSize: 22,
+                    fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: Colors.white24,
+                    letterSpacing: 2,
                   ),
-                  textAlign: TextAlign.center,
                 ),
+                const SizedBox(height: 16),
 
-                const SizedBox(height: 24),
-
-                // Game cards
+                // Compact Game Selection
                 Wrap(
-                  spacing: 16,
-                  runSpacing: 16,
+                  spacing: 12,
+                  runSpacing: 12,
                   alignment: WrapAlignment.center,
                   children: [
-                    GameCard(
-                      icon: Icons.style, // Spade/Cards substitute
+                    _buildCompactGameItem(
+                      icon: Icons.style,
                       label: 'Blackjack',
-                      variant: GameCardVariant.success,
-                      onClick: () => _goToGambleGame(const BlackjackScreen()),
+                      onPressed: () => _goToGambleGame(const BlackjackScreen()),
+                      color: const Color(0xFF22C55E).withOpacity(0.1),
                     ),
-                    GameCard(
-                      icon: Icons.adjust, // Roulette substitute
+                    _buildCompactGameItem(
+                      icon: Icons.adjust,
                       label: 'Roulette',
-                      variant: GameCardVariant.destructive,
-                      onClick: () => _goToGambleGame(const RouletteScreen()),
+                      onPressed: () => _goToGambleGame(const RouletteScreen()),
+                      color: const Color(0xFFEF4444).withOpacity(0.1),
                     ),
-                    GameCard(
-                      icon: Icons.grid_on, // Mines substitute
+                    _buildCompactGameItem(
+                      icon: Icons.grid_on,
                       label: 'Mines',
-                      variant: GameCardVariant.muted,
-                      onClick: () => _goToGambleGame(const MinesScreen()),
+                      onPressed: () => _goToGambleGame(const MinesScreen()),
+                      color: Colors.white.withOpacity(0.05),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 40),
+                const SizedBox(height: 48),
 
-                // Continue button
+                // Primary Action
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -399,16 +378,18 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                     ),
                     child: const Text(
-                      'Continue to App',
+                      'CONTINUE TO APP',
                       style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1,
                       ),
                     ),
                   ),
@@ -416,6 +397,40 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactGameItem({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    required Color color,
+  }) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
       ),
     );

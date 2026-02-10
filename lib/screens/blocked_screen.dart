@@ -179,17 +179,23 @@ class _BlockedScreenState extends State<BlockedScreen> {
   Widget build(BuildContext context) {
     final timeUntilReset = _usageTimer?.timeUntilReset() ?? Duration.zero;
     final remainingFormatted = _usageTimer?.remainingFormatted ?? "0:00";
-
     final timeUntilBonus = _usageTimer?.timeUntilNextBonus ?? Duration.zero;
     final bonusCountdownFormatted =
         _usageTimer?.formatDuration(timeUntilBonus) ?? "0:00";
-
     final dailyLimitFormatted = _usageTimer?.formatSeconds(_dailyLimitSeconds);
 
-    // Determine colors based on state
-    final Color warningColor = (_isTimeLimitExceeded || _isBonusCooldown)
-        ? const Color(0xFFF97316) // Orange
-        : const Color(0xFFEF4444); // Red
+    // Shiny Gradient for accents
+    final shinyGradient = LinearGradient(
+      colors: [
+        const Color(0xFFEF4444),
+        const Color(0xFFFF8A80), // Shimmer highlight
+        const Color(0xFFEF4444),
+      ],
+      stops: const [0.0, 0.5, 1.0],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      transform: const GradientRotation(0.5),
+    );
 
     return PopScope(
       canPop: false,
@@ -197,276 +203,243 @@ class _BlockedScreenState extends State<BlockedScreen> {
         backgroundColor: Colors.black,
         body: _loading
             ? const Center(child: CircularProgressIndicator())
-            : Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // Close button
-                      if (!_isTotalBlock)
-                        Align(
-                          alignment: Alignment.topRight,
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              shape: const CircleBorder(),
-                              padding: const EdgeInsets.all(12),
-                              foregroundColor: Colors.white,
-                              side: BorderSide(
-                                color: Colors.white.withOpacity(0.2),
+            : SafeArea(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24.0,
+                      vertical: 20.0,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Compact Header
+                        if (!_isTotalBlock)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.close,
+                                color: Colors.white54,
+                                size: 20,
                               ),
+                              onPressed: _closeActivity,
                             ),
-                            child: const Icon(Icons.close, size: 20),
-                            onPressed: _closeActivity,
                           ),
+
+                        Icon(
+                          _isBonusCooldown ? Icons.timer_outlined : Icons.block,
+                          size: 56,
+                          color: (_isTimeLimitExceeded || _isBonusCooldown)
+                              ? const Color(0xFFF97316)
+                              : const Color(0xFFEF4444),
                         ),
-                      const Spacer(),
+                        const SizedBox(height: 12),
 
-                      // Icon
-                      Icon(
-                        _isBonusCooldown ? Icons.timer : Icons.block,
-                        size: 100,
-                        color: warningColor,
-                      ),
-                      const SizedBox(height: 32),
-
-                      Text(
-                        _isTotalBlock
-                            ? 'Website Blocked!'
-                            : (_isBonusCooldown
-                                  ? 'Daily Time Exhausted'
-                                  : (_isTimeLimitExceeded
-                                        ? 'Time Limit Reached!'
-                                        : 'App Blocked!')),
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // App name
-                      Text(
-                        _appName ?? _blockedPackageName ?? 'Unknown App',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.white.withOpacity(0.7),
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 48),
-
-                      // BONUS COOLDOWN MODE
-                      if (_isBonusCooldown) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildInfoCard(
-                                label: 'Daily Remaining',
-                                value: remainingFormatted,
-                                valueColor: const Color(0xFFEF4444),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildInfoCard(
-                                label: 'Resets In',
-                                value:
-                                    _usageTimer?.formatDuration(
-                                      timeUntilReset,
-                                    ) ??
-                                    '',
-                                valueColor: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Bonus timer
-                        Container(
-                          padding: const EdgeInsets.all(24),
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF97316).withOpacity(0.1),
-                            border: Border.all(color: const Color(0xFFF97316)),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Column(
-                            children: [
-                              const Text(
-                                'Next bonus in',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                bonusCountdownFormatted,
-                                style: const TextStyle(
-                                  fontSize: 48,
-                                  color: Color(0xFFF97316), // Orange
-                                  fontWeight: FontWeight.bold,
-                                  fontFeatures: [FontFeature.tabularFigures()],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              const Text(
-                                '💡 You get 5 bonus minutes every hour',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white60,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      // TIME LIMIT MODE
-                      if (_isTimeLimitExceeded && !_isBonusCooldown) ...[
                         Text(
-                          'Daily limit: $dailyLimitFormatted',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.white.withOpacity(0.5),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildInfoCard(
-                                label: 'Time Remaining',
-                                value: remainingFormatted,
-                                valueColor: const Color(0xFFF97316),
-                                borderColor: const Color(0xFFF97316),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildInfoCard(
-                                label: 'Restored In',
-                                value:
-                                    _usageTimer?.formatDuration(
-                                      timeUntilReset,
-                                    ) ??
-                                    '',
-                                valueColor: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-
-                      // NORMAL BLOCK MODE
-                      if (!_isTimeLimitExceeded &&
-                          !_isBonusCooldown &&
-                          !_isTotalBlock) ...[
-                        Text(
-                          'This app has been blocked.\nYou cannot access it right now.',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.white.withOpacity(0.7),
+                          _isTotalBlock
+                              ? 'Access Restricted'
+                              : (_isBonusCooldown
+                                    ? 'Daily Goal Reached'
+                                    : (_isTimeLimitExceeded
+                                          ? 'Time Limit Met'
+                                          : 'App Restricted')),
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: -0.5,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 48),
-
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _launchUnblockedApp,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.black,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            child: const Text(
-                              'Unblock This App',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-
-                      // WEBSITE / TOTAL BLOCK MODE
-                      if (_isTotalBlock) ...[
-                        const Text(
-                          'Strict blocking is active for this content.',
+                        const SizedBox(height: 4),
+                        Text(
+                          _appName ?? _blockedPackageName ?? 'Current App',
                           style: TextStyle(
-                            fontSize: 16,
-                            color: Color(0xFFEF4444),
+                            fontSize: 14,
+                            color: Colors.white.withOpacity(0.5),
                             fontWeight: FontWeight.w500,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 48),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _launchSafeSearch,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFEF4444),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
+
+                        const SizedBox(height: 32),
+
+                        // MAIN CONTENT (LOGIC PRESERVED)
+
+                        // BONUS COOLDOWN MODE
+                        if (_isBonusCooldown) ...[
+                          const Text(
+                            'NEXT BONUS IN',
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ShaderMask(
+                            shaderCallback: (bounds) =>
+                                shinyGradient.createShader(bounds),
+                            child: Text(
+                              bonusCountdownFormatted,
+                              style: const TextStyle(
+                                fontSize: 64,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                                letterSpacing: -2,
                               ),
                             ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
+                          ),
+                          const SizedBox(height: 24),
+
+                          // Compact Info Grid
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.white10),
+                            ),
+                            child: Row(
                               children: [
-                                Icon(Icons.search),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Go to Google Search',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
+                                Expanded(
+                                  child: _buildCompactInfo(
+                                    'DAILY LEFT',
+                                    remainingFormatted,
+                                    const Color(0xFFEF4444),
+                                  ),
+                                ),
+                                Container(
+                                  width: 1,
+                                  height: 24,
+                                  color: Colors.white10,
+                                ),
+                                Expanded(
+                                  child: _buildCompactInfo(
+                                    'RESETS IN',
+                                    _usageTimer?.formatDuration(
+                                          timeUntilReset,
+                                        ) ??
+                                        '',
+                                    Colors.white70,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton(
-                            onPressed: _closeActivity,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white,
-                              side: const BorderSide(color: Colors.white),
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
+                          const SizedBox(height: 16),
+                          const Text(
+                            '💡 Bonus time grants 5m of access.',
+                            style: TextStyle(
+                              color: Colors.white24,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ]
+                        // TIME LIMIT MODE
+                        else if (_isTimeLimitExceeded) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 20,
+                              horizontal: 24,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF97316).withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: const Color(0xFFF97316).withOpacity(0.2),
                               ),
                             ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
+                            child: Column(
                               children: [
-                                Icon(Icons.home),
-                                SizedBox(width: 8),
-                                Text('Go to Home Screen'),
+                                const Text(
+                                  'DAILY REMAINING',
+                                  style: TextStyle(
+                                    color: Color(0xFFF97316),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  remainingFormatted,
+                                  style: const TextStyle(
+                                    fontSize: 48,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
                               ],
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          Text(
+                            'Limit: $dailyLimitFormatted • Resets in ${_usageTimer?.formatDuration(timeUntilReset) ?? ""}',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.4),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ]
+                        // NORMAL BLOCK MODE
+                        else if (!_isTotalBlock) ...[
+                          const Text(
+                            'This app is currently managed.\nPlease check back later.',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.white60,
+                              height: 1.5,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 32),
+                          _buildActionButton(
+                            label: 'UNBLOCK APP',
+                            onPressed: _launchUnblockedApp,
+                            color: Colors.white,
+                            textColor: Colors.black,
+                          ),
+                        ],
 
-                      const Spacer(),
-                    ],
+                        // WEBSITE / TOTAL BLOCK MODE
+                        if (_isTotalBlock) ...[
+                          const SizedBox(height: 8),
+                          _buildActionButton(
+                            label: 'GO TO GOOGLE',
+                            onPressed: _launchSafeSearch,
+                            color: const Color(0xFFEF4444),
+                            icon: Icons.search,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildOutlineButton(
+                            label: 'BACK TO HOME',
+                            onPressed: _closeActivity,
+                            icon: Icons.home_outlined,
+                          ),
+                        ],
+
+                        const SizedBox(height: 24),
+                        if (!_isTotalBlock)
+                          TextButton(
+                            onPressed: _closeActivity,
+                            child: const Text(
+                              'I\'ll do something else',
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -474,39 +447,105 @@ class _BlockedScreenState extends State<BlockedScreen> {
     );
   }
 
-  Widget _buildInfoCard({
+  Widget _buildCompactInfo(String label, String value, Color valueColor) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white38,
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButton({
     required String label,
-    required String value,
-    required Color valueColor,
-    Color? borderColor,
+    required VoidCallback onPressed,
+    required Color color,
+    Color textColor = Colors.white,
+    IconData? icon,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF27272A), // Dark zinc bg
-        border: Border.all(color: borderColor ?? Colors.transparent),
-        borderRadius: BorderRadius.circular(12),
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: textColor,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 18),
+              const SizedBox(width: 8),
+            ],
+            Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+                letterSpacing: 1,
+              ),
+            ),
+          ],
+        ),
       ),
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.5),
-              fontSize: 12,
-            ),
+    );
+  }
+
+  Widget _buildOutlineButton({
+    required String label,
+    required VoidCallback onPressed,
+    required IconData icon,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.white,
+          side: const BorderSide(color: Colors.white10),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 32,
-              color: valueColor,
-              fontWeight: FontWeight.bold,
-              fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 18, color: Colors.white54),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                letterSpacing: 1,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
