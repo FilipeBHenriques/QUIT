@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:quit/game_result.dart';
 import '../games/roulette_game.dart';
 import '../games/roulette_constants.dart';
-import 'dart:ui' show FontFeature;
 
 class RouletteScreen extends StatefulWidget {
   const RouletteScreen({super.key});

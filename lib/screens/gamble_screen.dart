@@ -8,7 +8,6 @@ import 'package:quit/screens/blackjack_screen.dart';
 import 'package:quit/screens/roulette_screen.dart';
 import 'package:quit/screens/mines_screen.dart';
 import 'package:quit/screens/game_result_screen.dart';
-import 'dart:ui' show FontFeature;
 
 class FirstTimeGambleScreen extends StatefulWidget {
   final String packageName;

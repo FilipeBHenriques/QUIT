@@ -3,7 +3,6 @@ import 'package:flame/components.dart';
 import 'package:flame/events.dart';
 import 'package:flutter/material.dart';
 import 'dart:math';
-import 'dart:ui' as ui;
 import 'package:quit/game_result.dart';
 
 // ============================================================================

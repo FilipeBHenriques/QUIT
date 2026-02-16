@@ -330,7 +330,7 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
                                   onChanged: (value) {
                                     _toggleWebsite(website.url, value);
                                   },
-                                  activeColor: const Color(0xFFEF4444),
+                                  activeThumbColor: const Color(0xFFEF4444),
                                 ),
                         ),
                       ],

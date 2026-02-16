@@ -1,5 +1,4 @@
 import 'package:flame/components.dart';
-import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'mines_constants.dart';
 import 'mines_tile.dart';

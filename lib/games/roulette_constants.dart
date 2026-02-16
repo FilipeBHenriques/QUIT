@@ -107,8 +107,9 @@ class RouletteNumbers {
   };
 
   static bool isBlack(int number) {
-    if (number == 0)
+    if (number == 0) {
       return false; // Green in real roulette, we'll make it special
+    }
     return blackNumbers.contains(number);
   }
 

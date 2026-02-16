@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../games/blackjack_game.dart';
 import 'package:quit/game_result.dart';
-import 'dart:ui' show FontFeature;
 
 class BlackjackScreen extends StatefulWidget {
   const BlackjackScreen({super.key});
