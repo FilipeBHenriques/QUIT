@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/widgets.dart' as flutter;
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -14,7 +14,7 @@ import 'package:go_router/go_router.dart';
 import 'widgets/game_card.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  flutter.WidgetsFlutterBinding.ensureInitialized();
   await _initializeServicesOnLaunch();
   runApp(const QuitApp());
 }
@@ -50,15 +50,13 @@ Future<void> _initializeServicesOnLaunch() async {
   }
 }
 
-class QuitApp extends StatelessWidget {
+class QuitApp extends flutter.StatelessWidget {
   const QuitApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  flutter.Widget build(flutter.BuildContext context) {
     return ShadcnApp.router(
-      darkTheme: ThemeData(colorScheme: ColorSchemes.darkGreen, radius: 0.7),
-      theme: ThemeData(colorScheme: ColorSchemes.darkGreen, radius: 0.7),
-
+      theme: ThemeData(colorScheme: LegacyColorSchemes.darkZinc(), radius: 0.7),
       routerConfig: GoRouter(
         routes: [
           GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
@@ -98,31 +96,32 @@ class QuitApp extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends flutter.StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  flutter.State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends flutter.State<HomeScreen>
+    with flutter.WidgetsBindingObserver {
   static const platform = MethodChannel('com.quit.app/monitoring');
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
+    flutter.WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    flutter.WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
+  void didChangeAppLifecycleState(flutter.AppLifecycleState state) {
+    if (state == flutter.AppLifecycleState.resumed) {
       _syncServicesIfNeeded();
     }
   }
@@ -157,13 +156,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   @override
-  Widget build(BuildContext context) {
+  flutter.Widget build(flutter.BuildContext context) {
     return Scaffold(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      child: flutter.Center(
+        child: flutter.Column(
+          mainAxisAlignment: flutter.MainAxisAlignment.center,
           children: [
-            const SizedBox(height: 40),
+            const flutter.SizedBox(height: 40),
             OutlineButton(
               onPressed: () async {
                 await context.push('/blocking_selection');
@@ -205,23 +204,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
-class BlockingSelectionScreen extends StatefulWidget {
+class BlockingSelectionScreen extends flutter.StatefulWidget {
   const BlockingSelectionScreen({super.key});
 
   @override
-  State<BlockingSelectionScreen> createState() =>
+  flutter.State<BlockingSelectionScreen> createState() =>
       _BlockingSelectionScreenState();
 }
 
-class _BlockingSelectionScreenState extends State<BlockingSelectionScreen> {
+class _BlockingSelectionScreenState
+    extends flutter.State<BlockingSelectionScreen> {
   int _index = 0;
 
   @override
-  Widget build(BuildContext context) {
+  flutter.Widget build(flutter.BuildContext context) {
     return Scaffold(
       headers: [
         AppBar(
-          title: const Text('Block Apps & Websites'),
+          title: const flutter.Text('Block Apps & Websites'),
           leading: [
             OutlineButton(
               onPressed: () => context.pop(),
@@ -232,7 +232,7 @@ class _BlockingSelectionScreenState extends State<BlockingSelectionScreen> {
         ),
         const Divider(),
       ],
-      child: Column(
+      child: flutter.Column(
         children: [
           Tabs(
             index: _index,
@@ -242,13 +242,13 @@ class _BlockingSelectionScreenState extends State<BlockingSelectionScreen> {
               });
             },
             children: const [
-              TabItem(child: Text('Apps')),
-              TabItem(child: Text('Websites')),
+              TabItem(child: flutter.Text('Apps')),
+              TabItem(child: flutter.Text('Websites')),
             ],
           ),
           const Divider(),
-          Expanded(
-            child: IndexedStack(
+          flutter.Expanded(
+            child: flutter.IndexedStack(
               index: _index,
               children: const [
                 AppsSelectionScreen(),
