@@ -3,6 +3,7 @@ import 'package:flame/events.dart';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'mines_constants.dart' show MinesConstants, TileState, TileType;
+import 'package:quit/theme/game_icons.dart';
 
 // ============================================================================
 // MINES TILE COMPONENT
@@ -212,61 +213,31 @@ class MinesTile extends PositionComponent with TapCallbacks {
   }
 
   void _drawDiamondIcon(Canvas canvas, {double opacity = 1.0}) {
-    final iconSize = size.x * MinesConstants.iconSizeMultiplier;
-    final center = Vector2(size.x / 2, size.y / 2);
+    final center = Offset(size.x / 2, size.y / 2);
+    final glow = Paint()
+      ..color = MinesConstants.diamondColor.withOpacity(opacity * 0.35)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    canvas.drawCircle(center, size.x * 0.20, glow);
 
-    final paint = Paint()
-      ..color = MinesConstants.diamondColor.withOpacity(opacity)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.miter;
+    final diamondPainter = TextPainter(
+      text: TextSpan(
+        text: kDiamondGlyph,
+        style: TextStyle(
+          color: MinesConstants.diamondColor.withOpacity(opacity),
+          fontSize: size.x * 0.42,
+          fontWeight: FontWeight.w800,
+          fontFamily: 'MaterialIcons',
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
 
-    // Diamond shape (geometric)
-    final path = Path();
-
-    // Top point
-    path.moveTo(center.x, center.y - iconSize / 2);
-
-    // Upper left
-    path.lineTo(center.x - iconSize / 4, center.y - iconSize / 6);
-
-    // Lower left
-    path.lineTo(center.x - iconSize / 3, center.y + iconSize / 2);
-
-    // Bottom center
-    path.lineTo(center.x, center.y + iconSize / 2.5);
-
-    // Lower right
-    path.lineTo(center.x + iconSize / 3, center.y + iconSize / 2);
-
-    // Upper right
-    path.lineTo(center.x + iconSize / 4, center.y - iconSize / 6);
-
-    // Close to top
-    path.close();
-
-    // Fill
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = MinesConstants.diamondColor.withOpacity(opacity * 0.2)
-        ..style = PaintingStyle.fill,
-    );
-
-    // Outline
-    canvas.drawPath(path, paint);
-
-    // Inner lines
-    canvas.drawLine(
-      Offset(center.x - iconSize / 4, center.y - iconSize / 6),
-      Offset(center.x, center.y + iconSize / 2.5),
-      paint,
-    );
-    canvas.drawLine(
-      Offset(center.x + iconSize / 4, center.y - iconSize / 6),
-      Offset(center.x, center.y + iconSize / 2.5),
-      paint,
+    diamondPainter.paint(
+      canvas,
+      Offset(
+        center.dx - diamondPainter.width / 2,
+        center.dy - diamondPainter.height / 2,
+      ),
     );
   }
 

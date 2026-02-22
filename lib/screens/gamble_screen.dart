@@ -8,6 +8,10 @@ import 'package:quit/screens/blackjack_screen.dart';
 import 'package:quit/screens/roulette_screen.dart';
 import 'package:quit/screens/mines_screen.dart';
 import 'package:quit/screens/game_result_screen.dart';
+import 'package:quit/theme/game_icons.dart';
+import 'package:quit/theme/neon_palette.dart';
+import 'package:quit/widgets/neon_button.dart';
+import 'package:shadcn_flutter/shadcn_flutter.dart' show LucideIcons;
 
 class FirstTimeGambleScreen extends StatefulWidget {
   final String packageName;
@@ -239,13 +243,13 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
 
     if (_loading) {
       return const Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: NeonPalette.bg,
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: NeonPalette.bg,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -261,14 +265,14 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                 const Icon(
                   Icons.access_time_outlined,
                   size: 40,
-                  color: Colors.white24,
+                  color: NeonPalette.textMuted,
                 ),
                 const SizedBox(height: 8),
                 Text(
                   appName.isNotEmpty ? appName.toUpperCase() : 'APP BLOCKED',
                   style: const TextStyle(
                     fontSize: 12,
-                    color: Colors.white38,
+                    color: NeonPalette.textMuted,
                     letterSpacing: 2,
                     fontWeight: FontWeight.bold,
                   ),
@@ -280,7 +284,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                 const Text(
                   'AVAILABLE TIME',
                   style: TextStyle(
-                    color: Colors.white30,
+                    color: NeonPalette.textMuted,
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 3,
@@ -319,7 +323,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
-                        color: Colors.black,
+                        color: NeonPalette.bg,
                         letterSpacing: 1,
                       ),
                     ),
@@ -334,7 +338,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white24,
+                    color: NeonPalette.textMuted,
                     letterSpacing: 2,
                   ),
                 ),
@@ -347,22 +351,22 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                   alignment: WrapAlignment.center,
                   children: [
                     _buildCompactGameItem(
-                      icon: Icons.style,
+                      icon: Icons.style_outlined,
                       label: 'Blackjack',
                       onPressed: () => _goToGambleGame(const BlackjackScreen()),
-                      color: const Color(0xFF22C55E).withOpacity(0.1),
+                      color: const Color(0xFF111827),
                     ),
                     _buildCompactGameItem(
-                      icon: Icons.adjust,
+                      icon: LucideIcons.circleDot,
                       label: 'Roulette',
                       onPressed: () => _goToGambleGame(const RouletteScreen()),
-                      color: const Color(0xFFEF4444).withOpacity(0.1),
+                      color: const Color(0xFF111827),
                     ),
                     _buildCompactGameItem(
-                      icon: Icons.grid_on,
+                      icon: kDiamond,
                       label: 'Mines',
                       onPressed: () => _goToGambleGame(const MinesScreen()),
-                      color: Colors.white.withOpacity(0.05),
+                      color: NeonPalette.surfaceSoft,
                     ),
                   ],
                 ),
@@ -372,25 +376,14 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                 // Primary Action
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
+                  child: NeonButton(
                     onPressed: _continueToApp,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: const Text(
-                      'CONTINUE TO APP',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1,
-                      ),
-                    ),
+                    color: const Color(0xFFEF4444),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    borderRadius: 22,
+                    fontSize: 15,
+                    letterSpacing: 1.2,
+                    text: 'CONTINUE TO APP',
                   ),
                 ),
               ],
@@ -403,6 +396,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
 
   Widget _buildCompactGameItem({
     required IconData icon,
+    String? iconGlyph,
     required String label,
     required VoidCallback onPressed,
     required Color color,
@@ -410,24 +404,47 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
     return GestureDetector(
       onTap: onPressed,
       child: Container(
+        width: 164,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: color,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withOpacity(0.04),
+              blurRadius: 14,
+              spreadRadius: 1,
+            ),
+          ],
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, size: 18, color: Colors.white),
-            const SizedBox(width: 8),
+            iconGlyph == null
+                ? Icon(icon, size: 18, color: Colors.white)
+                : Text(
+                    iconGlyph,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+            const SizedBox(height: 12),
             Text(
               label,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 14,
+                fontSize: 15,
                 fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
               ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Risk for extra time',
+              style: TextStyle(color: NeonPalette.textMuted, fontSize: 11),
             ),
           ],
         ),

@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:quit/game_result.dart';
+import 'dart:ui';
 import '../games/roulette_game.dart';
 import '../games/roulette_constants.dart';
+import '../theme/neon_palette.dart';
+import '../widgets/neon_button.dart';
 
 class RouletteScreen extends StatefulWidget {
   const RouletteScreen({super.key});
@@ -79,13 +82,13 @@ class _RouletteScreenState extends State<RouletteScreen>
   Widget build(BuildContext context) {
     if (!isLoaded) {
       return const Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: NeonPalette.bg,
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: NeonPalette.bg,
       body: SafeArea(
         child: Column(
           children: [
@@ -115,43 +118,67 @@ class _RouletteScreenState extends State<RouletteScreen>
       padding: const EdgeInsets.all(16.0),
       child: Row(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: NeonPalette.text),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Column(
-              children: [
-                const Text(
-                  'ROULETTE',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w300,
-                    letterSpacing: 4,
-                    color: Colors.white,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    border: Border.all(color: Colors.white24),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'ROULETTE',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 3,
+                          color: NeonPalette.text,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'BETTING: $timeString',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFFFDA4AF),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.4,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'BETTING: $timeString',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF22C55E), // Green
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           const SizedBox(width: 48), // Balance the back button
@@ -183,66 +210,62 @@ class _RouletteScreenState extends State<RouletteScreen>
   }
 
   Widget _buildBottomControls() {
-    return Container(
-      color: Colors.black, // Dark background for controls
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Bet buttons grid
-          _buildBetButtons(),
-          const SizedBox(height: 16),
-
-          // Action buttons
-          Row(
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          color: Colors.white.withOpacity(0.05),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Clear bet
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    _game.clearBet();
-                    setState(() {
-                      selectedBet = null;
-                    });
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white),
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: const Text('CLEAR'),
-                ),
-              ),
-              const SizedBox(width: 16),
+              // Bet buttons grid
+              _buildBetButtons(),
+              const SizedBox(height: 16),
 
-              // Spin
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: () => _game.spin(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+              // Action buttons
+              Row(
+                children: [
+                  // Clear bet
+                  Expanded(
+                    child: NeonButton(
+                      onPressed: () {
+                        _game.clearBet();
+                        setState(() {
+                          selectedBet = null;
+                        });
+                      },
+                      color: NeonPalette.surfaceSoft,
+                      borderColor: NeonPalette.border,
+                      glowOpacity: 0.2,
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      text: 'CLEAR',
                     ),
                   ),
-                  child: const Text(
-                    'SPIN',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2,
+                  const SizedBox(width: 16),
+
+                  // Spin
+                  Expanded(
+                    flex: 2,
+                    child: NeonButton(
+                      onPressed: () => _game.spin(),
+                      color: NeonPalette.cyan,
+                      textColor: Colors.black,
+                      borderColor: NeonPalette.cyan,
+                      glowOpacity: 0.45,
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      borderRadius: 22,
+                      fontSize: 16,
+                      letterSpacing: 1.2,
+                      text: 'SPIN',
                     ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -253,16 +276,13 @@ class _RouletteScreenState extends State<RouletteScreen>
         Row(
           children: [
             // Red (Visual Red -> Logic White)
-            _buildBetButton(BetType.white(), const Color(0xFFEF4444)), // Red
+            _buildBetButton(BetType.white(), NeonPalette.rose),
             const SizedBox(width: 8),
             // Black
-            _buildBetButton(BetType.black(), Colors.black),
+            _buildBetButton(BetType.black(), NeonPalette.surfaceSoft),
             const SizedBox(width: 8),
             // Green (0)
-            _buildBetButton(
-              BetType.straight(0),
-              const Color(0xFF22C55E),
-            ), // Green
+            _buildBetButton(BetType.straight(0), NeonPalette.mint),
           ],
         ),
         const SizedBox(height: 8),
@@ -289,52 +309,35 @@ class _RouletteScreenState extends State<RouletteScreen>
   }
 
   Widget _buildBetButton(BetType betType, [Color? color]) {
-    final isSelected = selectedBet?.name == betType.name;
-
     // Default to secondary styled button if no color provided (for even/odd/high/low)
-    final bool isColored = color != null;
-    final backgroundColor =
-        color ?? const Color(0xFF27272A); // muted/secondary color
-    final textColor = Colors.white;
+    final backgroundColor = color ?? NeonPalette.surface;
 
     return Expanded(
       child: AnimatedBuilder(
         animation: _borderAnimation,
         builder: (context, child) {
-          final borderColor = isSelected
-              ? const Color(0xFF22C55E).withOpacity(_borderAnimation.value)
-              : Colors.transparent;
-
-          return ElevatedButton(
+          final isSelected = selectedBet?.name == betType.name;
+          return NeonButton(
             onPressed: () => _game.placeBet(betType),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: backgroundColor,
-              foregroundColor: textColor,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              elevation: isSelected ? 8 : 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-                side: BorderSide(color: borderColor, width: isSelected ? 2 : 0),
-              ),
-              shadowColor: isSelected
-                  ? const Color(
-                      0xFF22C55E,
-                    ).withOpacity(_borderAnimation.value * 0.5)
-                  : null,
-            ),
-            child: Text(
-              betType.name.toUpperCase(),
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            color: backgroundColor,
+            borderColor: isSelected ? NeonPalette.cyan : Colors.white12,
+            glowOpacity: isSelected ? (_borderAnimation.value * 0.5) : 0.12,
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+            borderRadius: 20,
+            fontSize: 12,
+            letterSpacing: 0.5,
+            text:
+                '${_displayBetName(betType).toUpperCase()}  x${betType.payout + 1}',
           );
         },
       ),
     );
+  }
+
+  String _displayBetName(BetType betType) {
+    if (betType.name.startsWith('Straight')) return '0';
+    if (betType.name.startsWith('Low')) return 'Low';
+    if (betType.name.startsWith('High')) return 'High';
+    return betType.name;
   }
 }

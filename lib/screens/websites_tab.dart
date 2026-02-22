@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shadcn_flutter/shadcn_flutter.dart' as shadcn;
 import 'package:quit/usage_timer.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/hold_to_unblock_button.dart';
+import '../widgets/neon_button.dart';
+import '../widgets/neon_card.dart';
+import '../widgets/neon_switch.dart';
+import '../widgets/neon_text_field.dart';
+import '../theme/neon_palette.dart';
 
 class WebsitesSelectionScreen extends StatefulWidget {
   const WebsitesSelectionScreen({super.key});
@@ -70,7 +74,6 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
 
         if (_usageTimer!.shouldReset()) {
           await _usageTimer!.resetTimer();
-          print('🔄 Reset detected');
           await _syncVpnState();
         }
 
@@ -101,8 +104,6 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
       _blockedWebsites = list.toSet();
       _loading = false;
     });
-
-    print('📋 Loaded ${_blockedWebsites.length} blocked websites');
   }
 
   Future<void> _syncVpnState() async {
@@ -129,8 +130,6 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
     await prefs.setStringList('blocked_websites', _blockedWebsites.toList());
 
     await _syncVpnState();
-
-    print('${blocked ? '🚫 Blocked' : '✅ Unblocked'}: $url');
   }
 
   Future<void> _addCustomWebsite() async {
@@ -153,7 +152,7 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Blocked $cleanUrl'),
-          backgroundColor: Colors.green,
+          backgroundColor: const Color(0xFFEF4444),
         ),
       );
     }
@@ -162,186 +161,187 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
   void _showError(String message) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: Colors.red),
+        SnackBar(content: Text(message), backgroundColor: NeonPalette.rose),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = shadcn.Theme.of(context); // Use Shadcn theme
-
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return Column(
-      children: [
-        // BLOCKING INFO ALERT (Custom styled container)
-        Container(
-          padding: const EdgeInsets.all(16),
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: const Color(0xFFEF4444).withOpacity(0.1),
-            border: Border.all(color: const Color(0xFFEF4444)),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.warning, color: Color(0xFFEF4444)),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Strict Blocking Active',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFEF4444),
-                      ),
-                    ),
-                    Text(
-                      'Websites are blocked after timer runs out.',
-                      style: TextStyle(fontSize: 12, color: Color(0xFFEF4444)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // CUSTOM URL INPUT CARD
-        shadcn.Card(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Add Custom Website',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _customUrlController,
-                        decoration: const InputDecoration(
-                          hintText: 'example.com',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          isDense: true,
-                        ),
-                        onSubmitted: (_) => _addCustomWebsite(),
-                        style: TextStyle(color: theme.colorScheme.foreground),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // FIX: Replaced Shadcn PrimaryButton invalid prop with Material ElevatedButton
-                    ElevatedButton(
-                      onPressed: _addCustomWebsite,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFEF4444),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text('Add'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // CATEGORIES
-        Expanded(
-          child: ListView.separated(
-            itemCount: _categories.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final category = _categories.keys.elementAt(index);
-              final websites = _categories[category]!;
-
-              // Using ExpansionTile with shadcn styling concepts
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  border: Border.all(color: theme.colorScheme.border),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: ExpansionTile(
-                  title: Text(
-                    category,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.foreground,
-                    ),
-                  ),
-                  children: websites.map((website) {
-                    final isBlocked = _blockedWebsites.contains(website.url);
-
-                    return Column(
+    return Container(
+      decoration: BoxDecoration(gradient: NeonPalette.pageGlow),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: NeonCard(
+              glowColor: NeonPalette.rose,
+              padding: const EdgeInsets.all(16),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: NeonPalette.rose),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.muted,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Icon(
-                              website.icon,
-                              size: 16,
-                              color: theme.colorScheme.foreground,
-                            ),
+                        Text(
+                          'Strict Blocking Active',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: NeonPalette.text,
                           ),
-                          title: Text(
-                            website.name,
-                            style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Websites are blocked after timer runs out.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: NeonPalette.textMuted,
                           ),
-                          subtitle: Text(
-                            website.url,
-                            style: TextStyle(
-                              color: theme.colorScheme.mutedForeground,
-                              fontSize: 11,
-                            ),
-                          ),
-                          trailing: isBlocked
-                              ? HoldToUnblockButton(
-                                  onUnblocked: () async {
-                                    await _toggleWebsite(website.url, false);
-                                  },
-                                )
-                              : Switch(
-                                  value: isBlocked,
-                                  onChanged: (value) {
-                                    _toggleWebsite(website.url, value);
-                                  },
-                                  activeThumbColor: const Color(0xFFEF4444),
-                                ),
                         ),
                       ],
-                    );
-                  }).toList(),
-                ),
-              );
-            },
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ],
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: NeonCard(
+              glowColor: const Color(0xFFEF4444),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Add Custom Website',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: NeonPalette.text,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: NeonTextField(
+                          controller: _customUrlController,
+                          placeholder: 'example.com',
+                          leading: const Icon(
+                            Icons.language_rounded,
+                            color: NeonPalette.textMuted,
+                          ),
+                          onChanged: (_) {},
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      NeonButton(
+                        onPressed: _addCustomWebsite,
+                        text: 'Add',
+                        color: const Color(0xFFEF4444),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          Expanded(
+            child: ListView.separated(
+              itemCount: _categories.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final category = _categories.keys.elementAt(index);
+                final websites = _categories[category]!;
+
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: NeonPalette.border),
+                    borderRadius: BorderRadius.circular(12),
+                    color: NeonPalette.surface,
+                  ),
+                  child: ExpansionTile(
+                    collapsedIconColor: NeonPalette.textMuted,
+                    iconColor: const Color(0xFFEF4444),
+                    title: Text(
+                      category,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: NeonPalette.text,
+                      ),
+                    ),
+                    children: websites.map((website) {
+                      final isBlocked = _blockedWebsites.contains(website.url);
+
+                      return Column(
+                        children: [
+                          const Divider(height: 1, color: NeonPalette.border),
+                          ListTile(
+                            leading: Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: NeonPalette.surfaceSoft,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                website.icon,
+                                size: 16,
+                                color: NeonPalette.text,
+                              ),
+                            ),
+                            title: Text(
+                              website.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: NeonPalette.text,
+                              ),
+                            ),
+                            subtitle: Text(
+                              website.url,
+                              style: const TextStyle(
+                                color: NeonPalette.textMuted,
+                                fontSize: 11,
+                              ),
+                            ),
+                            trailing: isBlocked
+                                ? HoldToUnblockButton(
+                                    onUnblocked: () async {
+                                      await _toggleWebsite(website.url, false);
+                                    },
+                                  )
+                                : NeonSwitch(
+                                    value: isBlocked,
+                                    onChanged: (value) {
+                                      _toggleWebsite(website.url, value);
+                                    },
+                                    activeColor: const Color(0xFFEF4444),
+                                  ),
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

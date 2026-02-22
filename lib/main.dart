@@ -12,6 +12,7 @@ import 'screens/roulette_screen.dart';
 import 'screens/mines_screen.dart';
 import 'package:go_router/go_router.dart';
 import 'widgets/game_card.dart';
+import 'theme/game_icons.dart';
 
 void main() async {
   flutter.WidgetsFlutterBinding.ensureInitialized();
@@ -184,13 +185,13 @@ class _HomeScreenState extends flutter.State<HomeScreen>
                   onClick: () => context.push('/blackjack'),
                 ),
                 GameCard(
-                  icon: LucideIcons.disc,
+                  icon: LucideIcons.circleDot,
                   label: 'Roulette',
                   variant: GameCardVariant.destructive,
                   onClick: () => context.push('/roulette'),
                 ),
                 GameCard(
-                  icon: LucideIcons.grid3x3,
+                  icon: kDiamond,
                   label: 'Mines',
                   variant: GameCardVariant.success,
                   onClick: () => context.push('/mines'),
@@ -234,19 +235,33 @@ class _BlockingSelectionScreenState
       ],
       child: flutter.Column(
         children: [
-          Tabs(
-            index: _index,
-            onChanged: (index) {
-              setState(() {
-                _index = index;
-              });
-            },
-            children: const [
-              TabItem(child: flutter.Text('Apps')),
-              TabItem(child: flutter.Text('Websites')),
-            ],
+          const flutter.SizedBox(height: 10),
+          Padding(
+            padding: const flutter.EdgeInsets.symmetric(horizontal: 24),
+            child: flutter.Container(
+              child: flutter.Row(
+                children: [
+                  flutter.Expanded(
+                    child: _TopSelectorItem(
+                      selected: _index == 0,
+                      icon: LucideIcons.grid3x3,
+                      label: 'Apps',
+                      onTap: () => setState(() => _index = 0),
+                    ),
+                  ),
+                  flutter.Expanded(
+                    child: _TopSelectorItem(
+                      selected: _index == 1,
+                      icon: LucideIcons.globe,
+                      label: 'Websites',
+                      onTap: () => setState(() => _index = 1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const Divider(),
+          const flutter.SizedBox(height: 8),
           flutter.Expanded(
             child: flutter.IndexedStack(
               index: _index,
@@ -257,6 +272,73 @@ class _BlockingSelectionScreenState
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TopSelectorItem extends flutter.StatelessWidget {
+  final bool selected;
+  final IconData icon;
+  final String label;
+  final flutter.VoidCallback onTap;
+
+  const _TopSelectorItem({
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  flutter.Widget build(flutter.BuildContext context) {
+    return flutter.GestureDetector(
+      onTap: onTap,
+      child: flutter.AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const flutter.EdgeInsets.only(top: 16, bottom: 10),
+        decoration: flutter.BoxDecoration(
+          borderRadius: flutter.BorderRadius.circular(12),
+        ),
+        child: flutter.Column(
+          mainAxisSize: flutter.MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 22,
+              color: selected
+                  ? const flutter.Color(0xFFFFFFFF)
+                  : const flutter.Color(0xFF8B95A7),
+            ),
+            const flutter.SizedBox(height: 8),
+            flutter.Text(
+              label,
+              style: flutter.TextStyle(
+                color: selected
+                    ? const flutter.Color(0xFFFFFFFF)
+                    : const flutter.Color(0xFF8B95A7),
+                fontSize: 16,
+                fontWeight: flutter.FontWeight.w500,
+              ),
+            ),
+            const flutter.SizedBox(height: 12),
+            flutter.AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              height: 3,
+              width: selected ? 120 : 0,
+              decoration: flutter.BoxDecoration(
+                color: const flutter.Color.fromARGB(255, 255, 0, 0),
+                borderRadius: flutter.BorderRadius.circular(999),
+                boxShadow: [
+                  flutter.BoxShadow(
+                    color: const flutter.Color(0xFFFF2D8F).withOpacity(0.45),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:ui';
 import '../games/blackjack_game.dart';
 import 'package:quit/game_result.dart';
+import 'package:quit/theme/neon_palette.dart';
+import 'package:quit/widgets/neon_button.dart';
 
 class BlackjackScreen extends StatefulWidget {
   const BlackjackScreen({super.key});
@@ -47,7 +50,7 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
   Widget build(BuildContext context) {
     if (!isLoaded) {
       return const Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: NeonPalette.bg,
         body: Center(child: CircularProgressIndicator()),
       );
     }
@@ -57,7 +60,7 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
     final timeString = '$minutes:${seconds.toString().padLeft(2, '0')}';
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: NeonPalette.bg,
       body: SafeArea(
         child: Stack(
           children: [
@@ -71,42 +74,51 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
               right: 0,
               child: Center(
                 child: IntrinsicWidth(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.8),
-                      border: Border.all(
-                        color: const Color(0xFF22C55E).withOpacity(0.5),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.06),
+                          border: Border.all(color: Colors.white24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF0EA5E9).withOpacity(0.25),
+                              blurRadius: 18,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'BLACKJACK',
+                              style: TextStyle(
+                                color: NeonPalette.text,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 3.2,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'BETTING: $timeString',
+                              style: const TextStyle(
+                                color: Color(0xFF93C5FD),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1,
+                                fontFeatures: [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'BLACKJACK',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 4,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'BETTING: $timeString',
-                          style: const TextStyle(
-                            color: Color(0xFF22C55E),
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 1,
-                            fontFeatures: [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ),
@@ -123,23 +135,15 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
                 children: [
                   // Hit button
                   Expanded(
-                    child: ElevatedButton(
+                    child: NeonButton(
                       onPressed: () => game.hit(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF22C55E), // Green
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'HIT',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      color: const Color(0xFF0EA5E9),
+                      borderColor: const Color(0xFF7DD3FC),
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      borderRadius: 22,
+                      fontSize: 18,
+                      letterSpacing: 1.2,
+                      text: 'HIT',
                     ),
                   ),
 
@@ -147,23 +151,15 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
 
                   // Stand button
                   Expanded(
-                    child: ElevatedButton(
+                    child: NeonButton(
                       onPressed: () => game.stand(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFEF4444), // Red
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 20),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'STAND',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      color: const Color(0xFFEF4444),
+                      borderColor: const Color(0xFFFCA5A5),
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      borderRadius: 22,
+                      fontSize: 18,
+                      letterSpacing: 1.2,
+                      text: 'STAND',
                     ),
                   ),
                 ],
@@ -176,12 +172,12 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
               right: 16,
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: Colors.white24),
                 ),
                 child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
+                  icon: const Icon(Icons.close, color: NeonPalette.text),
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ),

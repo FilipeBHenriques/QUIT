@@ -7,6 +7,7 @@ enum GameCardSize { sm, defaultSize, lg }
 
 class GameCard extends StatefulWidget {
   final IconData icon;
+  final String? iconGlyph;
   final String label;
   final VoidCallback? onClick;
   final GameCardVariant variant;
@@ -15,6 +16,7 @@ class GameCard extends StatefulWidget {
   const GameCard({
     super.key,
     required this.icon,
+    this.iconGlyph,
     required this.label,
     this.onClick,
     this.variant = GameCardVariant.muted,
@@ -90,16 +92,16 @@ class _GameCardState extends State<GameCard>
 
     switch (widget.variant) {
       case GameCardVariant.success:
-        backgroundColor = Colors.green.withOpacity(0.2);
-        borderColor = Colors.green.withOpacity(0.5);
-        hoverBorderColor = Colors.green;
-        hoverBackgroundColor = Colors.green.withOpacity(0.3);
+        backgroundColor = const Color(0xFF0F141B);
+        borderColor = const Color(0xFF1F2937);
+        hoverBorderColor = const Color(0xFF9CA3AF);
+        hoverBackgroundColor = const Color(0xFF131A22);
         break;
       case GameCardVariant.destructive:
-        backgroundColor = theme.colorScheme.destructive.withOpacity(0.2);
-        borderColor = theme.colorScheme.destructive.withOpacity(0.5);
-        hoverBorderColor = theme.colorScheme.destructive;
-        hoverBackgroundColor = theme.colorScheme.destructive.withOpacity(0.3);
+        backgroundColor = const Color(0xFF150C0F);
+        borderColor = const Color(0xFF3B1118);
+        hoverBorderColor = const Color(0xFFEF4444);
+        hoverBackgroundColor = const Color(0xFF1C0E12);
         break;
       case GameCardVariant.gold:
         backgroundColor = Colors.amber.withOpacity(0.2);
@@ -108,10 +110,10 @@ class _GameCardState extends State<GameCard>
         hoverBackgroundColor = Colors.amber.withOpacity(0.3);
         break;
       case GameCardVariant.primary:
-        backgroundColor = theme.colorScheme.primary.withOpacity(0.2);
-        borderColor = theme.colorScheme.primary.withOpacity(0.5);
-        hoverBorderColor = theme.colorScheme.primary;
-        hoverBackgroundColor = theme.colorScheme.primary.withOpacity(0.3);
+        backgroundColor = const Color(0xFF10141E);
+        borderColor = const Color(0xFF1B2A45);
+        hoverBorderColor = const Color(0xFF60A5FA);
+        hoverBackgroundColor = const Color(0xFF131B2A);
         break;
       case GameCardVariant.muted:
         backgroundColor = theme.colorScheme.secondary;
@@ -174,24 +176,57 @@ class _GameCardState extends State<GameCard>
                 color: _isHovered ? hoverBorderColor : borderColor,
                 width: 2,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: (_isHovered ? hoverBorderColor : borderColor)
+                      .withOpacity(0.2),
+                  blurRadius: 16,
+                ),
+              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  widget.icon,
-                  size: 24,
-                  color: theme.colorScheme.foreground,
+                Row(
+                  children: [
+                    widget.iconGlyph == null
+                        ? Icon(
+                            widget.icon,
+                            size: 22,
+                            color: theme.colorScheme.foreground,
+                          )
+                        : Text(
+                            widget.iconGlyph!,
+                            style: TextStyle(
+                              color: theme.colorScheme.foreground,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                    const SizedBox(width: 8),
+                    const Expanded(child: SizedBox.shrink()),
+                    const Icon(
+                      LucideIcons.chevronRight,
+                      size: 16,
+                      color: Color(0xFF9CA3AF),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 Text(
-                  widget.label.toUpperCase(),
+                  widget.label,
                   style: TextStyle(
-                    fontSize: 12,
-                    letterSpacing: 1.5,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                    letterSpacing: 0.3,
+                    fontWeight: FontWeight.w700,
                     color: theme.colorScheme.foreground,
                   ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Play for time',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
                 ),
               ],
             ),

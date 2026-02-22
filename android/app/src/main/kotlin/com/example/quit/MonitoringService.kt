@@ -15,6 +15,7 @@ import kotlin.math.max
 import android.util.Log
 import android.content.SharedPreferences
 import android.net.Uri
+import org.json.JSONArray
 
 class MonitoringService : Service() {
 
@@ -50,11 +51,13 @@ class MonitoringService : Service() {
                 getLong(key, defaultValue.toLong()).toInt()
             }
         }
+
     }
 
     override fun onCreate() {
         super.onCreate()
         val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        hydrateCachesFromPrefs(prefs)
         checkAndPerformReset(prefs) // Single reset check at startup
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
@@ -62,6 +65,42 @@ class MonitoringService : Service() {
         
         
         startMonitoring()
+    }
+
+    private fun hydrateCachesFromPrefs(prefs: SharedPreferences) {
+        val storedApps = getFlutterStringList(prefs, "blocked_apps")
+        val storedWebsites = getFlutterStringList(prefs, "blocked_websites")
+
+        cachedBlockedApps.clear()
+        cachedBlockedApps.addAll(storedApps)
+
+        cachedBlockedWebsites.clear()
+        cachedBlockedWebsites.addAll(storedWebsites)
+
+        Log.d(
+            TAG,
+            "🧠 Hydrated cache from prefs: ${cachedBlockedApps.size} apps, ${cachedBlockedWebsites.size} websites"
+        )
+    }
+
+    private fun getFlutterStringList(prefs: SharedPreferences, baseKey: String): List<String> {
+        val key = "flutter.$baseKey"
+
+        try {
+            prefs.getStringSet(key, null)?.let { return it.toList() }
+        } catch (_: Exception) {
+            // Fallback to encoded string parsing below
+        }
+
+        val raw = prefs.getString(key, null) ?: return emptyList()
+        val normalized = raw.removePrefix("!flutter_list!")
+
+        return try {
+            val array = JSONArray(normalized)
+            List(array.length()) { index -> array.optString(index) }.filter { it.isNotBlank() }
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
     
     private fun registerScreenStateReceiver() {
@@ -184,6 +223,14 @@ class MonitoringService : Service() {
                     cachedBlockedWebsites.clear()
                     cachedBlockedWebsites.addAll(it)
                     Log.d(TAG, "📝 Updated blocked websites: $cachedBlockedWebsites")
+                }
+
+                if (intent?.getStringArrayListExtra("blocked_apps") == null &&
+                    intent?.getStringArrayListExtra("blocked_websites") == null &&
+                    (cachedBlockedApps.isEmpty() || cachedBlockedWebsites.isEmpty())
+                ) {
+                    val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                    hydrateCachesFromPrefs(prefs)
                 }
             }
         }
@@ -659,6 +706,27 @@ class MonitoringService : Service() {
                 unregisterReceiver(it)
             } catch (e: Exception) {
                 Log.e(TAG, "Error unregistering screen receiver", e)
+            }
+        }
+
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val shouldRestart =
+            getFlutterStringList(prefs, "blocked_apps").isNotEmpty() ||
+            getFlutterStringList(prefs, "blocked_websites").isNotEmpty()
+
+        if (shouldRestart) {
+            try {
+                val restartIntent = Intent(applicationContext, MonitoringService::class.java).apply {
+                    putExtra("action", "service_restart")
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    applicationContext.startForegroundService(restartIntent)
+                } else {
+                    applicationContext.startService(restartIntent)
+                }
+                Log.w(TAG, "♻️ Monitoring service destroyed; requested auto-restart")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to auto-restart monitoring service", e)
             }
         }
         

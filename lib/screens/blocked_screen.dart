@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:quit/usage_timer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:quit/theme/neon_palette.dart';
 
 class BlockedScreen extends StatefulWidget {
   const BlockedScreen({super.key});
@@ -183,12 +184,12 @@ class _BlockedScreenState extends State<BlockedScreen> {
         _usageTimer?.formatDuration(timeUntilBonus) ?? "0:00";
     final dailyLimitFormatted = _usageTimer?.formatSeconds(_dailyLimitSeconds);
 
-    // Shiny Gradient for accents
+    // Monochrome shimmer
     final shinyGradient = LinearGradient(
       colors: [
-        const Color(0xFFEF4444),
-        const Color(0xFFFF8A80), // Shimmer highlight
-        const Color(0xFFEF4444),
+        const Color(0xFFE5E7EB),
+        const Color(0xFFFFFFFF),
+        const Color(0xFFE5E7EB),
       ],
       stops: const [0.0, 0.5, 1.0],
       begin: Alignment.topLeft,
@@ -199,7 +200,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: NeonPalette.bg,
         body: _loading
             ? const Center(child: CircularProgressIndicator())
             : SafeArea(
@@ -220,7 +221,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                             child: IconButton(
                               icon: const Icon(
                                 Icons.close,
-                                color: Colors.white54,
+                                color: NeonPalette.textMuted,
                                 size: 20,
                               ),
                               onPressed: _closeActivity,
@@ -230,9 +231,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                         Icon(
                           _isBonusCooldown ? Icons.timer_outlined : Icons.block,
                           size: 56,
-                          color: (_isTimeLimitExceeded || _isBonusCooldown)
-                              ? const Color(0xFFF97316)
-                              : const Color(0xFFEF4444),
+                          color: Colors.white70,
                         ),
                         const SizedBox(height: 12),
 
@@ -247,7 +246,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                           style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                            color: NeonPalette.text,
                             letterSpacing: -0.5,
                           ),
                           textAlign: TextAlign.center,
@@ -257,7 +256,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                           _appName ?? _blockedPackageName ?? 'Current App',
                           style: TextStyle(
                             fontSize: 14,
-                            color: Colors.white.withOpacity(0.5),
+                            color: NeonPalette.textMuted,
                             fontWeight: FontWeight.w500,
                           ),
                           textAlign: TextAlign.center,
@@ -309,7 +308,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                                   child: _buildCompactInfo(
                                     'DAILY LEFT',
                                     remainingFormatted,
-                                    const Color(0xFFEF4444),
+                                    Colors.white,
                                   ),
                                 ),
                                 Container(
@@ -324,7 +323,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                                           timeUntilReset,
                                         ) ??
                                         '',
-                                    Colors.white70,
+                                    NeonPalette.text,
                                   ),
                                 ),
                               ],
@@ -334,7 +333,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                           const Text(
                             '💡 Bonus time grants 5m of access.',
                             style: TextStyle(
-                              color: Colors.white24,
+                              color: NeonPalette.textMuted,
                               fontSize: 11,
                             ),
                           ),
@@ -347,18 +346,16 @@ class _BlockedScreenState extends State<BlockedScreen> {
                               horizontal: 24,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF97316).withOpacity(0.05),
+                              color: Colors.white.withOpacity(0.04),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: const Color(0xFFF97316).withOpacity(0.2),
-                              ),
+                              border: Border.all(color: Colors.white12),
                             ),
                             child: Column(
                               children: [
                                 const Text(
                                   'DAILY REMAINING',
                                   style: TextStyle(
-                                    color: Color(0xFFF97316),
+                                    color: Colors.white70,
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 1.5,
@@ -383,7 +380,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                           Text(
                             'Limit: $dailyLimitFormatted • Resets in ${_usageTimer?.formatDuration(timeUntilReset) ?? ""}',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.4),
+                              color: NeonPalette.textMuted,
                               fontSize: 12,
                             ),
                           ),
@@ -394,7 +391,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                             'This app is currently managed.\nPlease check back later.',
                             style: TextStyle(
                               fontSize: 15,
-                              color: Colors.white60,
+                              color: NeonPalette.textMuted,
                               height: 1.5,
                             ),
                             textAlign: TextAlign.center,
@@ -414,7 +411,8 @@ class _BlockedScreenState extends State<BlockedScreen> {
                           _buildActionButton(
                             label: 'GO TO GOOGLE',
                             onPressed: _launchSafeSearch,
-                            color: const Color(0xFFEF4444),
+                            color: Colors.white,
+                            textColor: Colors.black,
                             icon: Icons.search,
                           ),
                           const SizedBox(height: 12),
@@ -432,7 +430,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
                             child: const Text(
                               'I\'ll do something else',
                               style: TextStyle(
-                                color: Colors.white38,
+                                color: NeonPalette.textMuted,
                                 fontSize: 13,
                               ),
                             ),
@@ -452,7 +450,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
         Text(
           label,
           style: const TextStyle(
-            color: Colors.white38,
+            color: NeonPalette.textMuted,
             fontSize: 9,
             fontWeight: FontWeight.bold,
             letterSpacing: 1,
@@ -476,7 +474,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
     required String label,
     required VoidCallback onPressed,
     required Color color,
-    Color textColor = Colors.white,
+    Color textColor = NeonPalette.text,
     IconData? icon,
   }) {
     return SizedBox(
@@ -523,8 +521,8 @@ class _BlockedScreenState extends State<BlockedScreen> {
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.white,
-          side: const BorderSide(color: Colors.white10),
+          foregroundColor: NeonPalette.text,
+          side: const BorderSide(color: NeonPalette.border),
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -533,7 +531,7 @@ class _BlockedScreenState extends State<BlockedScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18, color: Colors.white54),
+            Icon(icon, size: 18, color: NeonPalette.textMuted),
             const SizedBox(width: 8),
             Text(
               label,

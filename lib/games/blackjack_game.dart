@@ -55,7 +55,7 @@ class GameText {
   static const String push = 'PUSH';
   static const String dealer = 'DEALER';
   static const String player = 'PLAYER';
-  static const String quit = 'QUIT';
+  static const String quit = 'Q';
 }
 
 class CardDeck {
@@ -552,6 +552,27 @@ class BlackjackGame extends FlameGame with TapCallbacks {
       Paint()..color = Colors.black,
     );
 
+    // Subtle grid texture
+    final gridPaint = Paint()
+      ..color = Colors.white.withOpacity(0.03)
+      ..strokeWidth = 1;
+    const step = 32.0;
+    for (double x = 0; x <= size.x; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.y), gridPaint);
+    }
+    for (double y = 0; y <= size.y; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.x, y), gridPaint);
+    }
+
+    // Top ambient red glow
+    canvas.drawCircle(
+      Offset(size.x * 0.5, -35),
+      size.x * 0.6,
+      Paint()
+        ..color = const Color(0xFFEF4444).withOpacity(0.1)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30),
+    );
+
     // Vignette
     final vignette = RadialGradient(
       center: Alignment.center,
@@ -729,7 +750,7 @@ class PlayingCard extends PositionComponent {
     canvas.drawPath(
       shadowPath,
       Paint()
-        ..color = Colors.black.withOpacity(0.6)
+        ..color = Colors.black.withOpacity(0.38)
         ..maskFilter = MaskFilter.blur(
           BlurStyle.normal,
           GameConstants.shadowBlur,
@@ -743,13 +764,36 @@ class PlayingCard extends PositionComponent {
       Radius.circular(GameConstants.cardRadius),
     );
 
-    canvas.drawRRect(cardRect, Paint()..color = Colors.white);
+    final faceGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [const Color(0xFFFFFFFF), const Color(0xFFF3F4F6)],
+    );
+
     canvas.drawRRect(
       cardRect,
       Paint()
-        ..color = Colors.grey[200]!
+        ..shader = faceGradient.createShader(
+          Rect.fromLTWH(0, 0, size.x, size.y),
+        ),
+    );
+    canvas.drawRRect(
+      cardRect,
+      Paint()
+        ..color = const Color(0xFFD1D5DB)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.5,
+        ..strokeWidth = 1,
+    );
+
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(4, 4, size.x - 8, size.y - 8),
+        Radius.circular(GameConstants.cardRadius - 2),
+      ),
+      Paint()
+        ..color = const Color(0xFFF9FAFB)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.7,
     );
   }
 
@@ -763,7 +807,19 @@ class PlayingCard extends PositionComponent {
       Radius.circular(GameConstants.cardRadius - 2),
     );
 
-    canvas.drawRRect(backRect, Paint()..color = Colors.black);
+    final backGradient = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [const Color(0xFF0B0D10), const Color(0xFF1F2937)],
+    );
+
+    canvas.drawRRect(
+      backRect,
+      Paint()
+        ..shader = backGradient.createShader(
+          Rect.fromLTWH(3, 3, size.x - 6, size.y - 6),
+        ),
+    );
 
     _renderBackPattern(canvas);
     _renderBackLogo(canvas);
@@ -771,7 +827,7 @@ class PlayingCard extends PositionComponent {
 
   void _renderBackPattern(Canvas canvas) {
     final patternPaint = Paint()
-      ..color = Colors.white.withOpacity(0.08)
+      ..color = Colors.white.withOpacity(0.12)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.5;
 
@@ -785,17 +841,33 @@ class PlayingCard extends PositionComponent {
         patternPaint,
       );
     }
+
+    final stripePaint = Paint()
+      ..color = const Color(0xFFEF4444).withOpacity(0.65)
+      ..strokeWidth = 1.2;
+    canvas.drawLine(
+      Offset(size.x * 0.2, size.y * 0.86),
+      Offset(size.x * 0.8, size.y * 0.86),
+      stripePaint,
+    );
   }
 
   void _renderBackLogo(Canvas canvas) {
     final logoText = TextPainter(
-      text: const TextSpan(
+      text: TextSpan(
         text: GameText.quit,
         style: TextStyle(
-          color: Colors.white,
-          fontSize: 10,
-          fontWeight: FontWeight.w300,
-          letterSpacing: 2,
+          color: const Color(0xFFEF4444).withOpacity(0.92),
+          fontSize: 28,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1,
+          shadows: [
+            Shadow(
+              color: Colors.white.withOpacity(0.22),
+              offset: Offset.zero,
+              blurRadius: 8,
+            ),
+          ],
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -823,7 +895,7 @@ class PlayingCard extends PositionComponent {
         style: TextStyle(
           color: color,
           fontSize: 18,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
           height: 1.0,
         ),
       ),
@@ -835,7 +907,7 @@ class PlayingCard extends PositionComponent {
         text: suit,
         style: TextStyle(
           color: color,
-          fontSize: 16,
+          fontSize: 15,
           fontWeight: FontWeight.w400,
         ),
       ),
@@ -859,7 +931,7 @@ class PlayingCard extends PositionComponent {
       text: TextSpan(
         text: suit,
         style: TextStyle(
-          color: color.withOpacity(0.15),
+          color: color.withOpacity(0.13),
           fontSize: 72,
           fontWeight: FontWeight.w100,
           height: 1.0,

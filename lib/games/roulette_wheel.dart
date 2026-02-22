@@ -145,26 +145,39 @@ class RouletteWheel extends PositionComponent {
         ..color = Colors.black.withOpacity(0.4)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
+
+    canvas.drawCircle(
+      center,
+      RouletteConstants.wheelRadius + 12,
+      Paint()
+        ..color = const Color(0xFFEF4444).withOpacity(0.12)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20),
+    );
   }
 
   void _drawOuterRim(Canvas canvas, Offset center) {
     final rimRadius = RouletteConstants.wheelRadius + 6;
 
-    // Outer rim - dark gray
-    canvas.drawCircle(
-      center,
-      rimRadius,
-      Paint()..color = const Color(0xFF1a1a1a),
-    );
-
-    // Subtle highlight
+    // Outer rim - deep metal
     canvas.drawCircle(
       center,
       rimRadius,
       Paint()
-        ..color = Colors.white.withOpacity(0.1)
+        ..shader = const LinearGradient(
+          colors: [Color(0xFF2A2F38), Color(0xFF111318)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(Rect.fromCircle(center: center, radius: rimRadius)),
+    );
+
+    // Accent highlight ring
+    canvas.drawCircle(
+      center,
+      rimRadius,
+      Paint()
+        ..color = const Color(0xFFEF4444).withOpacity(0.5)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
+        ..strokeWidth = 1.2,
     );
   }
 
@@ -175,7 +188,7 @@ class RouletteWheel extends PositionComponent {
     canvas.drawCircle(
       center,
       innerRimRadius,
-      Paint()..color = const Color(0xFF0a0a0a),
+      Paint()..color = const Color(0xFF090B0F),
     );
   }
 
@@ -221,7 +234,7 @@ class RouletteWheel extends PositionComponent {
 
     // Apply highlight if winning number
     final pocketColor = highlight > 0
-        ? Color.lerp(baseColor, Colors.white, highlight * 0.3)!
+        ? Color.lerp(baseColor, const Color(0xFFEF4444), highlight * 0.35)!
         : baseColor;
 
     canvas.drawPath(outerPath, Paint()..color = pocketColor);
@@ -246,7 +259,7 @@ class RouletteWheel extends PositionComponent {
   }
 
   void _drawNumber(Canvas canvas, Offset center, double angle, int number) {
-    final textRadius = RouletteConstants.wheelRadius * 0.73;
+    final textRadius = RouletteConstants.wheelRadius * 0.77;
     final textX = center.dx + cos(angle) * textRadius;
     final textY = center.dy + sin(angle) * textRadius;
 
@@ -255,13 +268,13 @@ class RouletteWheel extends PositionComponent {
         text: '$number',
         style: TextStyle(
           color: RouletteNumbers.getNumberTextColor(number),
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
           shadows: [
             Shadow(
-              color: Colors.black.withOpacity(0.8),
-              offset: const Offset(1, 1),
-              blurRadius: 2,
+              color: Colors.black.withOpacity(0.55),
+              offset: const Offset(0.5, 0.5),
+              blurRadius: 1,
             ),
           ],
         ),
@@ -271,7 +284,6 @@ class RouletteWheel extends PositionComponent {
 
     canvas.save();
     canvas.translate(textX, textY);
-    canvas.rotate(angle + pi / 2);
     textPainter.paint(
       canvas,
       Offset(-textPainter.width / 2, -textPainter.height / 2),
@@ -293,7 +305,17 @@ class RouletteWheel extends PositionComponent {
     canvas.drawCircle(
       center,
       hubRadius,
-      Paint()..color = const Color(0xFF0a0a0a),
+      Paint()
+        ..shader = const RadialGradient(
+          colors: [Color(0xFF1F2937), Color(0xFF0A0A0A)],
+        ).createShader(Rect.fromCircle(center: center, radius: hubRadius)),
+    );
+
+    // Center accent
+    canvas.drawCircle(
+      center,
+      hubRadius * 0.35,
+      Paint()..color = const Color(0xFFEF4444),
     );
   }
 

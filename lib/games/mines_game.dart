@@ -253,6 +253,27 @@ class MinesGame extends FlameGame {
       Paint()..color = MinesConstants.backgroundColor,
     );
 
+    // Subtle grid texture
+    final gridPaint = Paint()
+      ..color = Colors.white.withOpacity(0.04)
+      ..strokeWidth = 1;
+    const step = 32.0;
+    for (double x = 0; x <= size.x; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.y), gridPaint);
+    }
+    for (double y = 0; y <= size.y; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.x, y), gridPaint);
+    }
+
+    // Top ambient red glow
+    canvas.drawCircle(
+      Offset(size.x * 0.5, -40),
+      size.x * 0.6,
+      Paint()
+        ..color = const Color(0xFFEF4444).withOpacity(0.12)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30),
+    );
+
     // Subtle vignette
     final vignette = RadialGradient(
       center: Alignment.center,

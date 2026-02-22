@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'package:quit/game_result.dart';
+import 'package:quit/theme/neon_palette.dart';
+import 'package:quit/widgets/neon_button.dart';
 
 class GameResultScreen extends StatefulWidget {
   final GameResult result;
@@ -169,11 +171,17 @@ class _GameResultScreenState extends State<GameResultScreen>
   @override
   Widget build(BuildContext context) {
     final isWin = widget.result.won;
-    final primaryColor = isWin ? Colors.greenAccent : Colors.redAccent;
-    final secondaryColor = isWin ? Colors.green[700] : Colors.red[900];
+    final primaryColor = isWin ? NeonPalette.mint : NeonPalette.rose;
+    final secondaryColor = isWin
+        ? const Color(0xFF065F46)
+        : const Color(0xFF7F1D1D);
+    final headline = isWin ? 'YOU WON' : 'YOU LOST';
+    final subhead = isWin
+        ? 'Nice play. Time added to your balance.'
+        : 'Rough hand. Time was deducted.';
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: NeonPalette.bg,
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -181,16 +189,31 @@ class _GameResultScreenState extends State<GameResultScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: primaryColor.withOpacity(0.16),
+                    border: Border.all(color: primaryColor.withOpacity(0.45)),
+                  ),
+                  child: Icon(
+                    isWin ? Icons.check_rounded : Icons.close_rounded,
+                    color: primaryColor,
+                    size: 34,
+                  ),
+                ),
+                const SizedBox(height: 14),
                 // Result text with scale animation
                 ScaleTransition(
                   scale: _scaleAnimation,
                   child: Text(
-                    isWin ? 'YOU WON!' : 'YOU LOST',
+                    headline,
                     style: TextStyle(
                       color: primaryColor,
-                      fontSize: 48,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 4,
+                      fontSize: 44,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2,
                       shadows: [
                         Shadow(
                           color: primaryColor.withOpacity(0.8),
@@ -201,6 +224,16 @@ class _GameResultScreenState extends State<GameResultScreen>
                     ),
                   ),
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  subhead,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: NeonPalette.textMuted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
 
                 const SizedBox(height: 40),
 
@@ -208,7 +241,7 @@ class _GameResultScreenState extends State<GameResultScreen>
                 Container(
                   padding: const EdgeInsets.all(32),
                   decoration: BoxDecoration(
-                    color: secondaryColor?.withOpacity(0.2),
+                    color: secondaryColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: primaryColor, width: 2),
                     boxShadow: [
@@ -224,7 +257,7 @@ class _GameResultScreenState extends State<GameResultScreen>
                       Text(
                         isWin ? 'TIME GAINED' : 'TIME LOST',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.7),
+                          color: NeonPalette.textMuted,
                           fontSize: 14,
                           fontWeight: FontWeight.w300,
                           letterSpacing: 3,
@@ -235,8 +268,8 @@ class _GameResultScreenState extends State<GameResultScreen>
                         widget.result.timeChangeFormattedMinutes,
                         style: TextStyle(
                           color: primaryColor,
-                          fontSize: 64,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 58,
+                          fontWeight: FontWeight.w900,
                           letterSpacing: 2,
                         ),
                       ),
@@ -262,7 +295,7 @@ class _GameResultScreenState extends State<GameResultScreen>
                                 Text(
                                   'TIME REMAINING',
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.5),
+                                    color: NeonPalette.textMuted,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w300,
                                     letterSpacing: 2,
@@ -272,7 +305,9 @@ class _GameResultScreenState extends State<GameResultScreen>
                                 Text(
                                   _formatTime(_numberAnimation!.value),
                                   style: TextStyle(
-                                    color: hasTime ? Colors.white : Colors.red,
+                                    color: hasTime
+                                        ? NeonPalette.text
+                                        : NeonPalette.rose,
                                     fontSize: 40,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 2,
@@ -294,7 +329,7 @@ class _GameResultScreenState extends State<GameResultScreen>
                             Text(
                               'TIME REMAINING',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.5),
+                                color: NeonPalette.textMuted,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w300,
                                 letterSpacing: 2,
@@ -305,7 +340,7 @@ class _GameResultScreenState extends State<GameResultScreen>
                               height: 40,
                               child: Center(
                                 child: CircularProgressIndicator(
-                                  color: Colors.white,
+                                  color: NeonPalette.text,
                                 ),
                               ),
                             ),
@@ -318,36 +353,19 @@ class _GameResultScreenState extends State<GameResultScreen>
                 // Continue button
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
+                  child: NeonButton(
                     onPressed: _continue,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: hasTime
-                          ? Colors.white
-                          : Colors.grey[800],
-                      foregroundColor: hasTime ? Colors.black : Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          hasTime ? 'CONTINUE TO APP' : 'GO HOME',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          hasTime ? Icons.arrow_forward : Icons.home,
-                          size: 24,
-                        ),
-                      ],
-                    ),
+                    color: const Color(0xFFEF4444),
+                    borderColor: hasTime
+                        ? const Color(0xFFEF4444)
+                        : NeonPalette.border,
+                    textColor: NeonPalette.text,
+                    glowOpacity: hasTime ? 0.45 : 0.12,
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    borderRadius: 22,
+                    fontSize: 16,
+                    letterSpacing: 1.2,
+                    text: hasTime ? 'CONTINUE TO APP' : 'GO HOME',
                   ),
                 ),
 
@@ -356,7 +374,7 @@ class _GameResultScreenState extends State<GameResultScreen>
                   Text(
                     'No time remaining. Try again tomorrow!',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.5),
+                      color: NeonPalette.textMuted,
                       fontSize: 14,
                     ),
                     textAlign: TextAlign.center,

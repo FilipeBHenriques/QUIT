@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:quit/game_result.dart';
+import 'dart:ui';
 import '../games/mines_game.dart';
 import '../games/mines_constants.dart';
+import '../theme/neon_palette.dart';
+import '../widgets/neon_button.dart';
 
 class MinesScreen extends StatefulWidget {
   const MinesScreen({super.key});
@@ -101,17 +104,13 @@ class _MinesScreenState extends State<MinesScreen>
   Widget build(BuildContext context) {
     if (!isLoaded) {
       return const Scaffold(
-        backgroundColor: MinesConstants.backgroundColor,
-        body: Center(
-          child: CircularProgressIndicator(
-            color: MinesConstants.textColorPrimary,
-          ),
-        ),
+        backgroundColor: NeonPalette.bg,
+        body: Center(child: CircularProgressIndicator(color: NeonPalette.text)),
       );
     }
 
     return Scaffold(
-      backgroundColor: MinesConstants.backgroundColor,
+      backgroundColor: NeonPalette.bg,
       body: SafeArea(
         child: Column(
           children: [
@@ -125,45 +124,70 @@ class _MinesScreenState extends State<MinesScreen>
   }
 
   Widget _buildTopBar() {
+    final frameColor = const Color(0xFF1F2937);
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Row(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: NeonPalette.text),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 16),
           Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  MinesConstants.gameTitle,
-                  style: const TextStyle(
-                    color: MinesConstants.textColorPrimary,
-                    fontSize: MinesConstants.titleTextSize,
-                    fontWeight: FontWeight.w300,
-                    letterSpacing: MinesConstants.titleLetterSpacing,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: frameColor),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        MinesConstants.gameTitle,
+                        style: const TextStyle(
+                          color: MinesConstants.textColorPrimary,
+                          fontSize: MinesConstants.titleTextSize,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: MinesConstants.titleLetterSpacing,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'BETTING: ${MinesConstants.formatTime(remainingTime)}',
+                        style: const TextStyle(
+                          color: Color(0xFFFDA4AF),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'BETTING: ${MinesConstants.formatTime(remainingTime)}',
-                  style: TextStyle(
-                    color: MinesConstants.winColor.withOpacity(0.8),
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           const SizedBox(width: 48), // Balance back button
@@ -176,56 +200,71 @@ class _MinesScreenState extends State<MinesScreen>
     final canCashOut = diamondsFound > 0 && !_game.isGameOver;
     final canReset = _game.isGameOver;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: MinesConstants.backgroundColor,
-        border: Border(
-          top: BorderSide(color: MinesConstants.tileBorderColor, width: 1),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Stats row
-          _buildStatsRow(),
-
-          const SizedBox(height: 16),
-
-          // Action buttons
-          Row(
-            children: [
-              // Reset button (only show when game over)
-              if (canReset) Expanded(child: _buildResetButton()),
-
-              // Cash out button (only show when diamonds found and game not over)
-              if (canCashOut) ...[
-                if (canReset) const SizedBox(width: 16),
-                Expanded(flex: canReset ? 1 : 2, child: _buildCashOutButton()),
-              ],
-
-              // Show placeholder if no buttons
-              if (!canCashOut && !canReset)
-                Expanded(
-                  child: Container(
-                    height: 56,
-                    alignment: Alignment.center,
-                    child: Text(
-                      'REVEAL TILES TO START',
-                      style: TextStyle(
-                        color: MinesConstants.textColorSecondary.withOpacity(
-                          0.5,
-                        ),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w300,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                  ),
-                ),
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            border: Border(
+              top: BorderSide(color: NeonPalette.border, width: 1),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.35),
+                blurRadius: 12,
+                offset: const Offset(0, -4),
+              ),
             ],
           ),
-        ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Stats row
+              _buildStatsRow(),
+
+              const SizedBox(height: 16),
+
+              // Action buttons
+              Row(
+                children: [
+                  // Reset button (only show when game over)
+                  if (canReset) Expanded(child: _buildResetButton()),
+
+                  // Cash out button (only show when diamonds found and game not over)
+                  if (canCashOut) ...[
+                    if (canReset) const SizedBox(width: 16),
+                    Expanded(
+                      flex: canReset ? 1 : 2,
+                      child: _buildCashOutButton(),
+                    ),
+                  ],
+
+                  // Show placeholder if no buttons
+                  if (!canCashOut && !canReset)
+                    Expanded(
+                      child: Container(
+                        height: 56,
+                        alignment: Alignment.center,
+                        child: Text(
+                          'REVEAL TILES TO START',
+                          style: TextStyle(
+                            color: MinesConstants.textColorSecondary
+                                .withOpacity(0.5),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w300,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -284,44 +323,16 @@ class _MinesScreenState extends State<MinesScreen>
       builder: (context, child) {
         return Transform.scale(
           scale: _buttonPulseAnimation.value,
-          child: ElevatedButton(
+          child: NeonButton(
             onPressed: _cashOut,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: MinesConstants.buttonColorPrimary,
-              foregroundColor: MinesConstants.backgroundColor,
-              padding: const EdgeInsets.symmetric(
-                vertical: 20,
-              ), // Matched padding
-              elevation: 8,
-              shadowColor: MinesConstants.winColor.withOpacity(0.5),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(
-                  MinesConstants.tileBorderRadius,
-                ),
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  MinesConstants.cashOutButton,
-                  style: const TextStyle(
-                    fontSize: MinesConstants.buttonTextSize,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: MinesConstants.buttonLetterSpacing,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  MinesConstants.formatTime(potentialWin),
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ],
-            ),
+            color: const Color(0xFFEF4444),
+            borderColor: const Color(0xFFFDA4AF),
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            borderRadius: 22,
+            fontSize: 14,
+            letterSpacing: 1.1,
+            text:
+                '${MinesConstants.cashOutButton}  ${MinesConstants.formatTime(potentialWin)}',
           ),
         );
       },
@@ -329,24 +340,16 @@ class _MinesScreenState extends State<MinesScreen>
   }
 
   Widget _buildResetButton() {
-    return OutlinedButton(
+    return NeonButton(
       onPressed: _reset,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: MinesConstants.textColorPrimary,
-        side: const BorderSide(color: MinesConstants.tileBorderColor, width: 2),
-        padding: const EdgeInsets.symmetric(vertical: 20), // Matched padding
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(MinesConstants.tileBorderRadius),
-        ),
-      ),
-      child: const Text(
-        MinesConstants.resetButton,
-        style: TextStyle(
-          fontSize: MinesConstants.buttonTextSize,
-          fontWeight: FontWeight.bold,
-          letterSpacing: MinesConstants.buttonLetterSpacing,
-        ),
-      ),
+      color: const Color(0xFF1F2937),
+      borderColor: NeonPalette.border,
+      glowOpacity: 0.2,
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      borderRadius: 22,
+      fontSize: 14,
+      letterSpacing: 1.1,
+      text: MinesConstants.resetButton,
     );
   }
 }

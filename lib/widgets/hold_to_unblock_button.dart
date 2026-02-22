@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:quit/theme/neon_palette.dart';
 
 const int holdDurationSeconds = 5;
 
@@ -66,7 +67,19 @@ class _HoldToUnblockButtonState extends State<HoldToUnblockButton> {
         width: 80,
         height: 40,
         decoration: BoxDecoration(
-          color: _holding ? Colors.redAccent : Colors.grey[700],
+          color: _holding ? NeonPalette.rose : NeonPalette.surfaceSoft,
+          border: Border.all(
+            color: _holding ? NeonPalette.rose : NeonPalette.border,
+          ),
+          boxShadow: _holding
+              ? [
+                  BoxShadow(
+                    color: NeonPalette.rose.withOpacity(0.4),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Center(

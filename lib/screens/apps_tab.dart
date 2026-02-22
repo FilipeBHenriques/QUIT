@@ -13,9 +13,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:quit/widgets/app_icon_widget.dart';
+import 'package:quit/theme/neon_palette.dart';
 
 const Color kRed = Color(0xFFEF4444);
-const Color kWhite = Colors.white;
+const Color kWhite = NeonPalette.text;
 
 class AppsSelectionScreen extends StatefulWidget {
   const AppsSelectionScreen({super.key});
@@ -30,6 +31,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
   bool _loading = true;
   String _searchQuery = '';
   bool _blockingMode = true;
+  final ScrollController _listController = ScrollController();
 
   UsageTimer? _usageTimer;
   int _dailyLimitMinutes = 0;
@@ -53,6 +55,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
   @override
   void dispose() {
     _timerUpdateTimer?.cancel();
+    _listController.dispose();
     super.dispose();
   }
 
@@ -78,7 +81,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
       withIcon: true,
     );
 
-    apps.sort((a, b) => a.name!.toLowerCase().compareTo(b.name!.toLowerCase()));
+    apps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     if (mounted) {
       setState(() {
@@ -129,16 +132,17 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
 
     final filteredApps = _searchQuery.isEmpty
         ? _installedApps
         : _installedApps
               .where(
                 (app) =>
-                    app.name!.toLowerCase().contains(
+                    app.name.toLowerCase().contains(
                       _searchQuery.toLowerCase(),
                     ) ||
-                    app.packageName!.toLowerCase().contains(
+                    app.packageName.toLowerCase().contains(
                       _searchQuery.toLowerCase(),
                     ),
               )
@@ -149,251 +153,295 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
       final bBlocked = _blockedApps.contains(b.packageName);
       if (aBlocked && !bBlocked) return -1;
       if (!aBlocked && bBlocked) return 1;
-      return a.name!.toLowerCase().compareTo(b.name!.toLowerCase());
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
     });
 
-    return Column(
-      children: [
-        // Blocking Mode Card
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: NeonCard(
-            glowColor: kRed, // All neon color is red now
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Blocking Mode',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: kWhite,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Block immediately when selected',
-                        style: TextStyle(fontSize: 11, color: kWhite),
-                      ),
-                    ],
-                  ),
-                ),
-                NeonSwitch(
-                  value: _blockingMode,
-                  onChanged: (value) {
-                    setState(() {
-                      _blockingMode = value;
-                    });
-                  },
-                  activeColor: kRed,
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        // Daily Time Limit Card
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: NeonCard(
-            glowColor: kRed, // All neon color is red now
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Container(
+        decoration: BoxDecoration(gradient: NeonPalette.pageGlow),
+        child: Column(
+          children: [
+            // Blocking Mode Card
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: NeonCard(
+                glowColor: kRed, // All neon color is red now
+                child: Row(
                   children: [
-                    const Text(
-                      'Daily Time Limit',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: kWhite,
-                        letterSpacing: 1.2,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Blocking Mode',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: kWhite,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Block immediately when selected',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: NeonPalette.textMuted,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    Text(
-                      '$_dailyLimitMinutes min/day',
-                      style: const TextStyle(fontSize: 12, color: kRed),
+                    NeonSwitch(
+                      value: _blockingMode,
+                      onChanged: (value) {
+                        setState(() {
+                          _blockingMode = value;
+                        });
+                      },
+                      activeColor: kRed,
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                NeonSlider(
-                  value: _dailyLimitMinutes.toDouble(),
-                  min: 0,
-                  max: 120,
-                  divisions: 120,
-                  onChanged: (value) {
-                    setState(() {
-                      _dailyLimitMinutes = value.round();
-                    });
-                  },
-                  onChangeEnd: (value) {
-                    _updateDailyLimit(value.round());
-                  },
-                  activeColor: kRed,
-                ),
-                if (_dailyLimitMinutes > 0 && _usageTimer != null) ...[
-                  const SizedBox(height: 16),
-                  NeonProgressBar(
-                    value: _usageTimer!.usedTodaySeconds.toDouble(),
-                    max: _usageTimer!.dailyLimitSeconds.toDouble(),
-                    color: kRed,
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Used Today',
-                              style: TextStyle(fontSize: 10, color: kWhite),
+              ),
+            ),
+
+            // Daily Time Limit Card
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: NeonCard(
+                glowColor: kRed, // All neon color is red now
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Daily Time Limit',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: kWhite,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        Text(
+                          '$_dailyLimitMinutes min/day',
+                          style: const TextStyle(fontSize: 12, color: kRed),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    NeonSlider(
+                      value: _dailyLimitMinutes.toDouble(),
+                      min: 0,
+                      max: 120,
+                      divisions: 120,
+                      onChanged: (value) {
+                        setState(() {
+                          _dailyLimitMinutes = value.round();
+                        });
+                      },
+                      onChangeEnd: (value) {
+                        _updateDailyLimit(value.round());
+                      },
+                      activeColor: kRed,
+                    ),
+                    if (_dailyLimitMinutes > 0 && _usageTimer != null) ...[
+                      const SizedBox(height: 16),
+                      NeonProgressBar(
+                        value: _usageTimer!.usedTodaySeconds.toDouble(),
+                        max: _usageTimer!.dailyLimitSeconds.toDouble(),
+                        color: kRed,
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Used Today',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: NeonPalette.textMuted,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _usageTimer!.usedTodayFormatted,
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: kRed,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _usageTimer!.usedTodayFormatted,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: kRed,
-                                fontFeatures: [FontFeature.tabularFigures()],
-                              ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                const Text(
+                                  'Remaining',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: NeonPalette.textMuted,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _usageTimer!.remainingFormatted,
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: kWhite,
+                                    fontFeatures: [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Resets in: ${_usageTimer!.formatDuration(_usageTimer!.timeUntilReset())}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: NeonPalette.textMuted,
                         ),
                       ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            const Text(
-                              'Remaining',
-                              style: TextStyle(fontSize: 10, color: kWhite),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _usageTimer!.remainingFormatted,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: kWhite,
-                                fontFeatures: [FontFeature.tabularFigures()],
-                              ),
-                            ),
-                          ],
-                        ),
+                      const SizedBox(height: 16),
+                      NeonButton(
+                        onPressed: () {
+                          _usageTimer?.resetTimer();
+                          setState(() {});
+                        },
+                        text: 'Reset Usage',
+                        color: kRed,
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Resets in: ${_usageTimer!.formatDuration(_usageTimer!.timeUntilReset())}',
-                    style: const TextStyle(fontSize: 10, color: kWhite),
-                  ),
-                  const SizedBox(height: 16),
-                  NeonButton(
-                    onPressed: () {
-                      _usageTimer?.resetTimer();
-                      setState(() {});
-                    },
-                    text: 'Reset Usage',
-                    color: kRed,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-
-        // Search Bar
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: NeonTextField(
-            placeholder: 'Search apps...',
-            leading: const Icon(Icons.search, color: kWhite),
-            onChanged: (value) {
-              setState(() {
-                _searchQuery = value;
-              });
-            },
-          ),
-        ),
-
-        // App List
-        Expanded(
-          child: filteredApps.isEmpty
-              ? const Center(
-                  child: Text('No apps found', style: TextStyle(color: kWhite)),
-                )
-              : ListView.separated(
-                  itemCount: filteredApps.length,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 2),
-                  itemBuilder: (context, index) {
-                    final app = filteredApps[index];
-                    final isBlocked = _blockedApps.contains(app.packageName);
-
-                    return Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: kRed.withOpacity(0.25)),
-                        borderRadius: BorderRadius.circular(12),
-                        color: kRed.withOpacity(0.07),
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        leading: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: kRed.withOpacity(0.10),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(child: AppIconWidget(app: app)),
-                        ),
-                        title: Text(
-                          app.name ?? 'Unknown',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w500,
-                            color: kWhite,
-                          ),
-                        ),
-                        subtitle: Text(
-                          app.packageName ?? '',
-                          style: const TextStyle(fontSize: 10, color: kRed),
-                        ),
-                        trailing: isBlocked
-                            ? HoldToUnblockButton(
-                                onUnblocked: () async {
-                                  await _toggleAppBlock(
-                                    app.packageName!,
-                                    false,
-                                  );
-                                },
-                              )
-                            : NeonSwitch(
-                                value: isBlocked,
-                                onChanged: (value) {
-                                  _toggleAppBlock(app.packageName!, value);
-                                },
-                                activeColor: kRed,
-                              ),
-                      ),
-                    );
-                  },
+                  ],
                 ),
+              ),
+            ),
+
+            // Search Bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: NeonTextField(
+                placeholder: 'Search apps...',
+                leading: const Icon(Icons.search, color: NeonPalette.textMuted),
+                onChanged: (value) {
+                  if (_listController.hasClients) {
+                    _listController.animateTo(
+                      0,
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                  setState(() {
+                    _searchQuery = value;
+                  });
+                },
+              ),
+            ),
+
+            // App List
+            Expanded(
+              child: filteredApps.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No apps found',
+                        style: TextStyle(color: kWhite),
+                      ),
+                    )
+                  : ListView.separated(
+                      controller: _listController,
+                      itemCount: filteredApps.length,
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        8,
+                        16,
+                        80 + keyboardInset,
+                      ),
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 2),
+                      itemBuilder: (context, index) {
+                        final app = filteredApps[index];
+                        final isBlocked = _blockedApps.contains(
+                          app.packageName,
+                        );
+
+                        return Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: NeonPalette.border),
+                            borderRadius: BorderRadius.circular(12),
+                            color: NeonPalette.surface,
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            leading: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: NeonPalette.surfaceSoft,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Center(child: AppIconWidget(app: app)),
+                            ),
+                            title: Text(
+                              app.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: kWhite,
+                              ),
+                            ),
+                            subtitle: Text(
+                              app.packageName,
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: NeonPalette.textMuted,
+                              ),
+                            ),
+                            trailing: isBlocked
+                                ? HoldToUnblockButton(
+                                    onUnblocked: () async {
+                                      await _toggleAppBlock(
+                                        app.packageName,
+                                        false,
+                                      );
+                                    },
+                                  )
+                                : NeonSwitch(
+                                    value: isBlocked,
+                                    onChanged: (value) {
+                                      _toggleAppBlock(app.packageName, value);
+                                    },
+                                    activeColor: kRed,
+                                  ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
