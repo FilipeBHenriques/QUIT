@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:quit/usage_timer.dart';
-import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../widgets/hold_to_unblock_button.dart';
+import '../theme/neon_palette.dart';
 import '../widgets/neon_button.dart';
 import '../widgets/neon_card.dart';
 import '../widgets/neon_switch.dart';
-import '../widgets/neon_text_field.dart';
-import '../theme/neon_palette.dart';
 
 class WebsitesSelectionScreen extends StatefulWidget {
   const WebsitesSelectionScreen({super.key});
@@ -22,9 +18,8 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
   final TextEditingController _customUrlController = TextEditingController();
   Set<String> _blockedWebsites = {};
   bool _loading = true;
-
-  UsageTimer? _usageTimer;
-  Timer? _pollTimer;
+  String? _loadError;
+  final Set<String> _expandedSections = <String>{};
 
   final Map<String, List<WebsiteItem>> _categories = {
     'Social Media': [
@@ -65,56 +60,39 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeTimer();
     _loadBlockedWebsites();
-
-    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
-      if (_usageTimer != null) {
-        await _usageTimer!.reload();
-
-        if (_usageTimer!.shouldReset()) {
-          await _usageTimer!.resetTimer();
-          await _syncVpnState();
-        }
-
-        if (mounted) {
-          setState(() {});
-        }
-      }
-    });
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
     _customUrlController.dispose();
     super.dispose();
   }
 
-  Future<void> _initializeTimer() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    _usageTimer = UsageTimer(prefs);
-    await _usageTimer!.checkAndResetIfNeeded();
-  }
-
   Future<void> _loadBlockedWebsites() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList('blocked_websites') ?? [];
-    setState(() {
-      _blockedWebsites = list.toSet();
-      _loading = false;
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('blocked_websites') ?? [];
+      if (!mounted) return;
+      setState(() {
+        _blockedWebsites = list.toSet();
+        _loading = false;
+        _loadError = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = 'Failed to load websites';
+      });
+    }
   }
 
-  Future<void> _syncVpnState() async {
-    try {
-      const platform = MethodChannel('com.quit.app/monitoring');
-      await platform.invokeMethod('updateBlockedWebsites', {
-        'blockedWebsites': _blockedWebsites.toList(),
-      });
-    } catch (e) {
-      print('⚠️ Sync error: $e');
-    }
+  Future<void> _syncBlockedWebsites() async {
+    const platform = MethodChannel('com.quit.app/monitoring');
+    await platform.invokeMethod('updateBlockedWebsites', {
+      'blockedWebsites': _blockedWebsites.toList(),
+    });
   }
 
   Future<void> _toggleWebsite(String url, bool blocked) async {
@@ -126,10 +104,9 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
       }
     });
 
-    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('blocked_websites', _blockedWebsites.toList());
-
-    await _syncVpnState();
+    await _syncBlockedWebsites();
   }
 
   Future<void> _addCustomWebsite() async {
@@ -137,7 +114,7 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
     if (url.isEmpty) return;
 
     if (!url.contains('.')) {
-      _showError('Please enter a valid domain (e.g., example.com)');
+      _showSnack('Please enter a valid domain (example.com)', isError: true);
       return;
     }
 
@@ -147,200 +124,177 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
 
     await _toggleWebsite(cleanUrl, true);
     _customUrlController.clear();
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Blocked $cleanUrl'),
-          backgroundColor: const Color(0xFFEF4444),
-        ),
-      );
-    }
+    _showSnack('Blocked $cleanUrl');
   }
 
-  void _showError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: NeonPalette.rose),
-      );
-    }
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? NeonPalette.rose : const Color(0xFFEF4444),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SizedBox.expand(
+        child: Center(child: CircularProgressIndicator()),
+      );
     }
 
-    return Container(
-      decoration: BoxDecoration(gradient: NeonPalette.pageGlow),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: NeonCard(
-              glowColor: NeonPalette.rose,
-              padding: const EdgeInsets.all(16),
-              child: const Row(
+    if (_loadError != null) {
+      return SizedBox.expand(
+        child: Center(
+          child: Text(
+            _loadError!,
+            style: const TextStyle(color: NeonPalette.text),
+          ),
+        ),
+      );
+    }
+
+    final sections = _categories.entries.toList();
+    if (_expandedSections.isEmpty && sections.isNotEmpty) {
+      _expandedSections.add(sections.first.key);
+    }
+
+    return SizedBox.expand(
+      child: Container(
+        decoration: BoxDecoration(gradient: NeonPalette.pageGlow),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: NeonCard(
+                glowColor: const Color(0xFFEF4444),
+                padding: const EdgeInsets.all(14),
+                child: const Text(
+                  'Websites are blocked instantly when selected.',
+                  style: TextStyle(color: NeonPalette.textMuted, fontSize: 12),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: NeonPalette.rose),
-                  SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Strict Blocking Active',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: NeonPalette.text,
-                          ),
+                    child: Container(
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF111827),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF374151)),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: TextField(
+                        controller: _customUrlController,
+                        style: const TextStyle(color: NeonPalette.text),
+                        cursorColor: const Color(0xFFEF4444),
+                        decoration: const InputDecoration(
+                          hintText: 'example.com',
+                          hintStyle: TextStyle(color: NeonPalette.textMuted),
+                          border: InputBorder.none,
                         ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Websites are blocked after timer runs out.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: NeonPalette.textMuted,
-                          ),
-                        ),
-                      ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 84,
+                    child: NeonButton(
+                      onPressed: _addCustomWebsite,
+                      text: 'Add',
+                      color: const Color(0xFFEF4444),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      borderRadius: 12,
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: NeonCard(
-              glowColor: const Color(0xFFEF4444),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Add Custom Website',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: NeonPalette.text,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: NeonTextField(
-                          controller: _customUrlController,
-                          placeholder: 'example.com',
-                          leading: const Icon(
-                            Icons.language_rounded,
-                            color: NeonPalette.textMuted,
-                          ),
-                          onChanged: (_) {},
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      NeonButton(
-                        onPressed: _addCustomWebsite,
-                        text: 'Add',
-                        color: const Color(0xFFEF4444),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                itemCount: sections.length,
+                itemBuilder: (context, index) {
+                  final section = sections[index];
+                  return _buildSection(section.key, section.value);
+                },
               ),
             ),
-          ),
+          ],
+        ),
+      ),
+    );
+  }
 
-          Expanded(
-            child: ListView.separated(
-              itemCount: _categories.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final category = _categories.keys.elementAt(index);
-                final websites = _categories[category]!;
-
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: NeonPalette.border),
-                    borderRadius: BorderRadius.circular(12),
-                    color: NeonPalette.surface,
-                  ),
-                  child: ExpansionTile(
-                    collapsedIconColor: NeonPalette.textMuted,
-                    iconColor: const Color(0xFFEF4444),
-                    title: Text(
-                      category,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: NeonPalette.text,
-                      ),
-                    ),
-                    children: websites.map((website) {
-                      final isBlocked = _blockedWebsites.contains(website.url);
-
-                      return Column(
-                        children: [
-                          const Divider(height: 1, color: NeonPalette.border),
-                          ListTile(
-                            leading: Container(
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: NeonPalette.surfaceSoft,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                website.icon,
-                                size: 16,
-                                color: NeonPalette.text,
-                              ),
-                            ),
-                            title: Text(
-                              website.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                                color: NeonPalette.text,
-                              ),
-                            ),
-                            subtitle: Text(
-                              website.url,
-                              style: const TextStyle(
-                                color: NeonPalette.textMuted,
-                                fontSize: 11,
-                              ),
-                            ),
-                            trailing: isBlocked
-                                ? HoldToUnblockButton(
-                                    onUnblocked: () async {
-                                      await _toggleWebsite(website.url, false);
-                                    },
-                                  )
-                                : NeonSwitch(
-                                    value: isBlocked,
-                                    onChanged: (value) {
-                                      _toggleWebsite(website.url, value);
-                                    },
-                                    activeColor: const Color(0xFFEF4444),
-                                  ),
-                          ),
-                        ],
-                      );
-                    }).toList(),
-                  ),
-                );
-              },
+  Widget _buildSection(String title, List<WebsiteItem> websites) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: NeonCard(
+        glowColor: const Color(0xFFEF4444),
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            key: PageStorageKey<String>('website_section_$title'),
+            iconColor: NeonPalette.textMuted,
+            collapsedIconColor: NeonPalette.textMuted,
+            initiallyExpanded: _expandedSections.contains(title),
+            onExpansionChanged: (expanded) {
+              setState(() {
+                if (expanded) {
+                  _expandedSections.add(title);
+                } else {
+                  _expandedSections.remove(title);
+                }
+              });
+            },
+            tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            childrenPadding: EdgeInsets.zero,
+            title: Text(
+              title,
+              style: const TextStyle(
+                color: NeonPalette.text,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
             ),
+            children: websites.map((website) {
+              final isBlocked = _blockedWebsites.contains(website.url);
+              return ListTile(
+                dense: true,
+                leading: Icon(
+                  website.icon,
+                  color: NeonPalette.textMuted,
+                  size: 18,
+                ),
+                title: Text(
+                  website.name,
+                  style: const TextStyle(
+                    color: NeonPalette.text,
+                    fontSize: 14,
+                  ),
+                ),
+                subtitle: Text(
+                  website.url,
+                  style: const TextStyle(
+                    color: NeonPalette.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
+                trailing: NeonSwitch(
+                  value: isBlocked,
+                  activeColor: const Color(0xFFEF4444),
+                  onChanged: (value) => _toggleWebsite(website.url, value),
+                ),
+              );
+            }).toList(),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -351,5 +305,5 @@ class WebsiteItem {
   final String url;
   final IconData icon;
 
-  WebsiteItem(this.name, this.url, this.icon);
+  const WebsiteItem(this.name, this.url, this.icon);
 }

@@ -13,6 +13,7 @@ import io.flutter.plugin.common.MethodChannel
 import android.os.PowerManager
 import android.text.TextUtils
 import android.widget.Toast
+import android.content.ComponentName
 
 class MainActivity : FlutterActivity() {
 
@@ -117,7 +118,9 @@ class MainActivity : FlutterActivity() {
     // ============= ACCESSIBILITY PERMISSION =============
 
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val service = "${packageName}/${BrowserAccessibilityService::class.java.canonicalName}"
+        val expectedComponent = ComponentName(this, BrowserAccessibilityService::class.java)
+        val expectedFlattened = expectedComponent.flattenToString()
+        val expectedShort = expectedComponent.flattenToShortString()
         val enabled = Settings.Secure.getInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
         if (enabled == 1) {
             val settingValue = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
@@ -125,7 +128,20 @@ class MainActivity : FlutterActivity() {
                 val splitter = TextUtils.SimpleStringSplitter(':')
                 splitter.setString(settingValue)
                 while (splitter.hasNext()) {
-                    if (splitter.next().equals(service, ignoreCase = true)) return true
+                    val enabledService = splitter.next()
+                    if (
+                        enabledService.equals(expectedFlattened, ignoreCase = true) ||
+                        enabledService.equals(expectedShort, ignoreCase = true)
+                    ) {
+                        return true
+                    }
+                    val component = ComponentName.unflattenFromString(enabledService)
+                    if (component != null &&
+                        component.packageName == packageName &&
+                        component.className.endsWith(BrowserAccessibilityService::class.java.simpleName)
+                    ) {
+                        return true
+                    }
                 }
             }
         }

@@ -32,6 +32,7 @@ class MonitoringService : Service() {
     // Screen state tracking
     private var isScreenOn: Boolean = true
     private var screenStateReceiver: BroadcastReceiver? = null
+    private var lastResetCheckTimestamp: Long = 0L
 
     companion object {
         private const val TAG = "MonitoringService"
@@ -155,16 +156,16 @@ class MonitoringService : Service() {
     }
 
     // SINGLE SOURCE OF TRUTH: Check and perform reset if needed
-    private fun checkAndPerformReset(prefs: SharedPreferences) {
+    private fun checkAndPerformReset(prefs: SharedPreferences): Boolean {
     val dailyLimitSeconds = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
-    if (dailyLimitSeconds == 0) return
+    if (dailyLimitSeconds == 0) return false
     
     val lastReset = prefs.getLong("flutter.timer_last_reset", 0L)
     if (lastReset == 0L) {
         prefs.edit()
             .putLong("flutter.timer_last_reset", System.currentTimeMillis())
             .apply()
-        return
+        return false
     }
     
     val resetIntervalSeconds = prefs.getIntSafe("flutter.reset_interval_seconds", 86400)
@@ -179,9 +180,11 @@ class MonitoringService : Service() {
             .remove("flutter.timer_last_reset")
             .remove("flutter.daily_time_ran_out_timestamp") // Clear the ran out timestamp
             .remove("flutter.timer_first_choice_made") // Reset choice flag to show gamble screen again
-            // NOTE: DON'T reset last_bonus_time ← IMPORTANT
+            .remove("flutter.last_bonus_time") // Reset bonus cooldown state too
             .apply()
+        return true
     }
+    return false
 }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -242,6 +245,25 @@ class MonitoringService : Service() {
         monitoringTimer?.cancel()
         monitoringTimer = timer(period = 500) {
             try {
+                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                val now = System.currentTimeMillis()
+                if (now - lastResetCheckTimestamp >= 1000L) {
+                    lastResetCheckTimestamp = now
+                    val didReset = checkAndPerformReset(prefs)
+                    if (didReset) {
+                        handler.post {
+                            stopTimeTracking()
+                            currentlyBlockedApp = null
+                            lastKnownForegroundApp = null
+                            val currentApp = getCurrentForegroundApp()
+                            if (currentApp != null) {
+                                handleForegroundApp(currentApp)
+                            }
+                            updateNotification()
+                        }
+                    }
+                }
+
                 // Check for foreground app changes
                 val foregroundApp = getCurrentForegroundApp()
                 if (foregroundApp != null && foregroundApp != lastKnownForegroundApp) {
@@ -256,6 +278,29 @@ class MonitoringService : Service() {
                 Log.e(TAG, "❌ Monitoring error", e)
             }
         }
+    }
+
+    private fun calculateBonusAvailability(
+        prefs: SharedPreferences,
+        now: Long = System.currentTimeMillis()
+    ): Pair<Boolean, Long> {
+        val dailyRanOutTimestamp = prefs.getLong("flutter.daily_time_ran_out_timestamp", 0L)
+        if (dailyRanOutTimestamp == 0L) {
+            return Pair(false, 0L)
+        }
+
+        val lastBonusTimestamp = prefs.getLong("flutter.last_bonus_time", 0L)
+        val bonusRefillIntervalSeconds = prefs.getIntSafe("flutter.bonus_refill_interval_seconds", 3600)
+        val bonusRefillIntervalMs = bonusRefillIntervalSeconds * 1000L
+
+        // Cooldown starts when daily time runs out. If a bonus was already granted after that,
+        // the latest of the two timestamps becomes the new cooldown anchor.
+        val cooldownAnchor = max(lastBonusTimestamp, dailyRanOutTimestamp)
+        val elapsed = now - cooldownAnchor
+        val bonusAvailable = elapsed >= bonusRefillIntervalMs
+        val timeUntilBonusMs = if (bonusAvailable) 0L else (bonusRefillIntervalMs - elapsed)
+
+        return Pair(bonusAvailable, max(0L, timeUntilBonusMs))
     }
 
     private fun showBonusCooldownScreen(
@@ -383,10 +428,6 @@ class MonitoringService : Service() {
                 startTimeTracking()
             } else {
                 // Daily time exhausted - check bonus system
-                val lastBonusTimestamp = prefs.getLong("flutter.last_bonus_time", 0L)
-                val bonusRefillIntervalSeconds = prefs.getIntSafe("flutter.bonus_refill_interval_seconds", 3600)
-                val bonusRefillIntervalMs = bonusRefillIntervalSeconds * 1000L
-                
                 val now = System.currentTimeMillis()
                 
                 // If daily time just ran out, mark the timestamp
@@ -397,26 +438,8 @@ class MonitoringService : Service() {
                     Log.d(TAG, "⏰ Marked daily time ran out at $now")
                 }
                 
-                // CRITICAL: Re-read the actual stored timestamp after potentially setting it
-                val actualRanOutTime = prefs.getLong("flutter.daily_time_ran_out_timestamp", now)
-                
-                // Check if bonus is available
-                val bonusAvailable: Boolean
-                val timeUntilBonusMs: Long
-                
-                if (lastBonusTimestamp == 0L) {
-                    // Never granted bonus - check time since daily ran out
-                    val timeSinceRanOut = now - actualRanOutTime
-                    bonusAvailable = timeSinceRanOut >= bonusRefillIntervalMs
-                    timeUntilBonusMs = if (bonusAvailable) 0L else (bonusRefillIntervalMs - timeSinceRanOut)
-                    Log.d(TAG, "🎲 Never granted: timeSince=${timeSinceRanOut}ms, timeUntil=${timeUntilBonusMs}ms (${timeUntilBonusMs/1000}s)")
-                } else {
-                    // Previously granted - check time since last bonus
-                    val timeSinceLastBonus = now - lastBonusTimestamp
-                    bonusAvailable = timeSinceLastBonus >= bonusRefillIntervalMs
-                    timeUntilBonusMs = if (bonusAvailable) 0L else (bonusRefillIntervalMs - timeSinceLastBonus)
-                    Log.d(TAG, "🎲 Previously: timeSince=${timeSinceLastBonus}ms, timeUntil=${timeUntilBonusMs}ms (${timeUntilBonusMs/1000}s)")
-                }
+                val (bonusAvailable, timeUntilBonusMs) = calculateBonusAvailability(prefs, now)
+                Log.d(TAG, "🎲 Bonus state: available=$bonusAvailable, timeUntil=${timeUntilBonusMs/1000}s")
                 
                 if (bonusAvailable) {
                     // Bonus is ready! Show gamble screen so user can choose to gamble or use the time
@@ -569,27 +592,8 @@ class MonitoringService : Service() {
                         val blockedApp = app // safe local copy
                             val dailyLimit = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
                             
-                            // Check bonus availability
-                            val dailyRanOutTimestamp = prefs.getLong("flutter.daily_time_ran_out_timestamp", 0L)
-                            val lastBonusTimestamp = prefs.getLong("flutter.last_bonus_time", 0L)
-                            val bonusRefillIntervalSeconds = prefs.getIntSafe("flutter.bonus_refill_interval_seconds", 3600)
-                            val bonusRefillIntervalMs = bonusRefillIntervalSeconds * 1000L
-                            
                             val now = System.currentTimeMillis()
-                            val bonusAvailable: Boolean
-                            val timeUntilBonusMs: Long
-                            
-                            if (lastBonusTimestamp == 0L) {
-                                // Never granted - check time since daily ran out
-                                val timeSinceRanOut = now - dailyRanOutTimestamp
-                                bonusAvailable = timeSinceRanOut >= bonusRefillIntervalMs
-                                timeUntilBonusMs = if (bonusAvailable) 0L else (bonusRefillIntervalMs - timeSinceRanOut)
-                            } else {
-                                // Previously granted - check time since last bonus
-                                val timeSinceLastBonus = now - lastBonusTimestamp
-                                bonusAvailable = timeSinceLastBonus >= bonusRefillIntervalMs
-                                timeUntilBonusMs = if (bonusAvailable) 0L else (bonusRefillIntervalMs - timeSinceLastBonus)
-                            }
+                            val (bonusAvailable, timeUntilBonusMs) = calculateBonusAvailability(prefs, now)
                             
                             if (bonusAvailable) {
                                 // Bonus is ready! Show gamble screen

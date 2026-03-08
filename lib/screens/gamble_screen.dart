@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:math' as math;
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:quit/game_result.dart';
@@ -118,22 +119,29 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
       bool bonusGranted = false;
 
       if (dailyRanOutTimestamp > 0) {
-        // This is a bonus scenario - grant the bonus
-        final bonusSeconds =
-            prefs.getInt('bonus_amount_seconds') ?? 300; // Default 5 minutes
-        final currentRemaining = prefs.getInt('remaining_seconds') ?? 0;
-        final newRemaining = currentRemaining + bonusSeconds;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final lastBonus = prefs.getInt('last_bonus_time') ?? 0;
+        final refillSeconds = prefs.getInt('bonus_refill_interval_seconds') ?? 3600;
+        final refillMs = refillSeconds * 1000;
+        final cooldownAnchor = math.max(lastBonus, dailyRanOutTimestamp);
+        final isBonusAvailable = (now - cooldownAnchor) >= refillMs;
 
-        await prefs.setInt('remaining_seconds', newRemaining);
-        await prefs.setInt(
-          'last_bonus_time',
-          DateTime.now().millisecondsSinceEpoch,
-        );
+        if (isBonusAvailable) {
+          final bonusSeconds =
+              prefs.getInt('bonus_amount_seconds') ?? 300; // Default 5 minutes
+          final currentRemaining = prefs.getInt('remaining_seconds') ?? 0;
+          final newRemaining = currentRemaining + bonusSeconds;
 
-        print(
-          '🎁 Bonus granted! Added ${bonusSeconds}s. Remaining: ${currentRemaining}s → ${newRemaining}s',
-        );
-        bonusGranted = true;
+          await prefs.setInt('remaining_seconds', newRemaining);
+          await prefs.setInt('last_bonus_time', now);
+
+          print(
+            '🎁 Bonus granted! Added ${bonusSeconds}s. Remaining: ${currentRemaining}s → ${newRemaining}s',
+          );
+          bonusGranted = true;
+        } else {
+          print('⏳ Bonus not granted yet - cooldown still active');
+        }
       }
 
       // Start the reset timer countdown if not already started

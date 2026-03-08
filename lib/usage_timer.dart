@@ -23,7 +23,7 @@ class UsageTimer {
   UsageTimer(
     this._prefs, {
     this.resetInterval = const Duration(hours: 24, minutes: 0, seconds: 0),
-    this.bonusRefillInterval = const Duration(hours: 1, minutes: 0, seconds: 0),
+    this.bonusRefillInterval = const Duration(hours: 0, minutes: 1, seconds: 0),
   }) {
     // Save reset interval to preferences so MonitoringService can read it
     _prefs.setInt('reset_interval_seconds', resetInterval.inSeconds);
@@ -107,14 +107,13 @@ class UsageTimer {
 
     final lastBonus = lastBonusTimestamp;
 
-    // If never granted, bonus is available immediately after daily time runs out
-    if (lastBonus == 0) return true;
-
     final now = DateTime.now().millisecondsSinceEpoch;
     final bonusIntervalMs = bonusRefillInterval.inMilliseconds;
+    final cooldownAnchor = max(lastBonus, dailyTimeRanOutTimestamp);
 
-    // Check if enough time has passed since last bonus
-    return (now - lastBonus) >= bonusIntervalMs;
+    // Cooldown starts when daily time runs out. If a bonus was granted after that,
+    // it restarts from the bonus grant time.
+    return (now - cooldownAnchor) >= bonusIntervalMs;
   }
 
   Duration? get timeUntilNextBonus {
@@ -123,21 +122,9 @@ class UsageTimer {
 
     final lastBonus = lastBonusTimestamp;
     final bonusIntervalMs = bonusRefillInterval.inMilliseconds;
-
-    // If never granted, calculate time since daily ran out
-    if (lastBonus == 0) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final timeSinceDailyRanOut = now - dailyTimeRanOutTimestamp;
-
-      if (timeSinceDailyRanOut >= bonusIntervalMs) {
-        return null; // Bonus available now
-      }
-
-      return Duration(milliseconds: bonusIntervalMs - timeSinceDailyRanOut);
-    }
-
     final now = DateTime.now().millisecondsSinceEpoch;
-    final elapsed = now - lastBonus;
+    final cooldownAnchor = max(lastBonus, dailyTimeRanOutTimestamp);
+    final elapsed = now - cooldownAnchor;
 
     if (elapsed >= bonusIntervalMs) return null; // Available now
 
@@ -174,7 +161,7 @@ class UsageTimer {
     await _prefs.remove(
       'timer_first_choice_made',
     ); // Reset choice flag to show gamble screen again
-    // NOTE: Don't reset _keyLastBonus - it's independent
+    await _prefs.remove(_keyLastBonus); // Reset bonus cooldown state too
     print('⏰ Timer reset: ${dailyLimitSeconds}s available, countdown cleared');
   }
 

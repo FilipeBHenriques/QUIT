@@ -263,13 +263,9 @@ class _BlockingSelectionScreenState
           ),
           const flutter.SizedBox(height: 8),
           flutter.Expanded(
-            child: flutter.IndexedStack(
-              index: _index,
-              children: const [
-                AppsSelectionScreen(),
-                WebsitesSelectionScreen(),
-              ],
-            ),
+            child: _index == 0
+                ? const AppsSelectionScreen()
+                : const WebsitesSelectionScreen(),
           ),
         ],
       ),

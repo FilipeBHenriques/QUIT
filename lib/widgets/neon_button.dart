@@ -48,13 +48,7 @@ class NeonButton extends StatelessWidget {
               ],
             ),
         textStyle: (context, states, style) =>
-            style?.copyWith(
-              color: textColor,
-              fontWeight: fontWeight,
-              fontSize: fontSize,
-              letterSpacing: letterSpacing,
-            ) ??
-            TextStyle(
+            style.copyWith(
               color: textColor,
               fontWeight: fontWeight,
               fontSize: fontSize,
@@ -64,7 +58,7 @@ class NeonButton extends StatelessWidget {
       ),
       child: SizedBox(
         width: double.infinity,
-        child: Text(text, textAlign: TextAlign.center),
+        child: Center(child: Text(text, textAlign: TextAlign.center)),
       ),
     );
   }
