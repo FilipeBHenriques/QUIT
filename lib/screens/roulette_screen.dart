@@ -6,6 +6,7 @@ import 'dart:ui';
 import '../games/roulette_game.dart';
 import '../games/roulette_constants.dart';
 import '../theme/neon_palette.dart';
+import '../widgets/game_header.dart';
 import '../widgets/neon_button.dart';
 
 class RouletteScreen extends StatefulWidget {
@@ -86,14 +87,20 @@ class _RouletteScreenState extends State<RouletteScreen>
         body: Center(child: CircularProgressIndicator()),
       );
     }
+    final minutes = remainingTime ~/ 60;
+    final seconds = remainingTime % 60;
+    final timeString = '$minutes:${seconds.toString().padLeft(2, '0')}';
 
     return Scaffold(
       backgroundColor: NeonPalette.bg,
       body: SafeArea(
         child: Column(
           children: [
-            // Top bar - only game name and bet amount
-            _buildTopBar(),
+            GameHeader(
+              title: 'ROULETTE',
+              bettingTime: timeString,
+              onBack: () => Navigator.of(context).pop(),
+            ),
 
             // Game canvas (roulette wheel)
             Expanded(flex: 3, child: GameWidget(game: _game)),
@@ -105,84 +112,6 @@ class _RouletteScreenState extends State<RouletteScreen>
             _buildBottomControls(),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildTopBar() {
-    final minutes = remainingTime ~/ 60;
-    final seconds = remainingTime % 60;
-    final timeString = '$minutes:${seconds.toString().padLeft(2, '0')}';
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: NeonPalette.text),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.06),
-                    border: Border.all(color: Colors.white24),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'ROULETTE',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 3,
-                          color: NeonPalette.text,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'BETTING: $timeString',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Color(0xFFFDA4AF),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.4,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 48), // Balance the back button
-        ],
       ),
     );
   }
@@ -215,7 +144,7 @@ class _RouletteScreenState extends State<RouletteScreen>
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.black.withOpacity(0.75),
           padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -238,8 +167,11 @@ class _RouletteScreenState extends State<RouletteScreen>
                       },
                       color: NeonPalette.surfaceSoft,
                       borderColor: NeonPalette.border,
-                      glowOpacity: 0.2,
+                      glowOpacity: 0.0,
                       padding: const EdgeInsets.symmetric(vertical: 20),
+                      borderRadius: 20,
+                      fontSize: 14,
+                      letterSpacing: 0.8,
                       text: 'CLEAR',
                     ),
                   ),
@@ -250,14 +182,14 @@ class _RouletteScreenState extends State<RouletteScreen>
                     flex: 2,
                     child: NeonButton(
                       onPressed: () => _game.spin(),
-                      color: NeonPalette.cyan,
-                      textColor: Colors.black,
-                      borderColor: NeonPalette.cyan,
-                      glowOpacity: 0.45,
+                      color: NeonPalette.surfaceSoft,
+                      textColor: Colors.white,
+                      borderColor: NeonPalette.border,
+                      glowOpacity: 0.0,
                       padding: const EdgeInsets.symmetric(vertical: 20),
-                      borderRadius: 22,
-                      fontSize: 16,
-                      letterSpacing: 1.2,
+                      borderRadius: 20,
+                      fontSize: 14,
+                      letterSpacing: 0.8,
                       text: 'SPIN',
                     ),
                   ),
@@ -309,8 +241,7 @@ class _RouletteScreenState extends State<RouletteScreen>
   }
 
   Widget _buildBetButton(BetType betType, [Color? color]) {
-    // Default to secondary styled button if no color provided (for even/odd/high/low)
-    final backgroundColor = color ?? NeonPalette.surface;
+    final backgroundColor = NeonPalette.surfaceSoft;
 
     return Expanded(
       child: AnimatedBuilder(
@@ -320,8 +251,9 @@ class _RouletteScreenState extends State<RouletteScreen>
           return NeonButton(
             onPressed: () => _game.placeBet(betType),
             color: backgroundColor,
-            borderColor: isSelected ? NeonPalette.cyan : Colors.white12,
-            glowOpacity: isSelected ? (_borderAnimation.value * 0.5) : 0.12,
+            textColor: Colors.white,
+            borderColor: isSelected ? const Color(0xFFEF4444) : NeonPalette.border,
+            glowOpacity: isSelected ? (_borderAnimation.value * 0.22) : 0.0,
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
             borderRadius: 20,
             fontSize: 12,

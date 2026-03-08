@@ -17,21 +17,29 @@ class BlockingActivity : FlutterActivity() {
     private val NAVIGATION_CHANNEL = "com.quit.app/navigation"
     private val BLOCKED_APP_CHANNEL = "com.quit.app/blocked_app"
     private val MONITORING_CHANNEL = "com.quit.app/monitoring"
+    private fun isStrictBlockedScreen(): Boolean {
+        val screenType = intent.getStringExtra("screenType")
+        return screenType != "first_time_gamble"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Make it fullscreen and prevent escape
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-            WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-        )
-
-        hideSystemUI()
+        // Only enforce immersive fullscreen on the strict blocked screen.
+        // First-time gamble/game flow should match MainActivity UI/insets.
+        if (isStrictBlockedScreen()) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
+            hideSystemUI()
+        } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -234,7 +242,7 @@ class BlockingActivity : FlutterActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
+        if (hasFocus && isStrictBlockedScreen()) {
             hideSystemUI()
         }
     }

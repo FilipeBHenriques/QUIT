@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:ui';
 import '../games/blackjack_game.dart';
 import 'package:quit/game_result.dart';
 import 'package:quit/theme/neon_palette.dart';
+import 'package:quit/widgets/game_header.dart';
 import 'package:quit/widgets/neon_button.dart';
 
 class BlackjackScreen extends StatefulWidget {
@@ -62,128 +62,58 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
     return Scaffold(
       backgroundColor: NeonPalette.bg,
       body: SafeArea(
-        child: Stack(
+        child: Column(
           children: [
-            // Flame game canvas
-            GameWidget(game: game),
-
-            // Top bar with bet amount
-            Positioned(
-              top: 16,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: IntrinsicWidth(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(22),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.06),
-                          border: Border.all(color: Colors.white24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF0EA5E9).withOpacity(0.25),
-                              blurRadius: 18,
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text(
-                              'BLACKJACK',
-                              style: TextStyle(
-                                color: NeonPalette.text,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 3.2,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'BETTING: $timeString',
-                              style: const TextStyle(
-                                color: Color(0xFF93C5FD),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1,
-                                fontFeatures: [FontFeature.tabularFigures()],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            GameHeader(
+              title: 'BLACKJACK',
+              bettingTime: timeString,
+              onBack: () => Navigator.of(context).pop(),
             ),
 
-            // Game controls overlay
-            Positioned(
-              bottom: 32,
-              left: 24,
-              right: 24,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Hit button
-                  Expanded(
-                    child: NeonButton(
-                      onPressed: () => game.hit(),
-                      color: const Color(0xFF0EA5E9),
-                      borderColor: const Color(0xFF7DD3FC),
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      borderRadius: 22,
-                      fontSize: 18,
-                      letterSpacing: 1.2,
-                      text: 'HIT',
-                    ),
-                  ),
-
-                  const SizedBox(width: 24),
-
-                  // Stand button
-                  Expanded(
-                    child: NeonButton(
-                      onPressed: () => game.stand(),
-                      color: const Color(0xFFEF4444),
-                      borderColor: const Color(0xFFFCA5A5),
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      borderRadius: 22,
-                      fontSize: 18,
-                      letterSpacing: 1.2,
-                      text: 'STAND',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Close button
-            Positioned(
-              top: 16,
-              right: 16,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: NeonPalette.text),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ),
-            ),
+            Expanded(child: GameWidget(game: game)),
+            _buildBottomControls(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildBottomControls() {
+    return Container(
+      color: Colors.black.withOpacity(0.75),
+      padding: const EdgeInsets.fromLTRB(24, 14, 24, 24),
+      child: Row(
+        children: [
+          Expanded(
+            child: NeonButton(
+              onPressed: () => game.hit(),
+              color: NeonPalette.surfaceSoft,
+              textColor: Colors.white,
+              borderColor: NeonPalette.border,
+              glowOpacity: 0.0,
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              borderRadius: 20,
+              fontSize: 14,
+              letterSpacing: 0.8,
+              text: 'HIT',
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: NeonButton(
+              onPressed: () => game.stand(),
+              color: NeonPalette.surfaceSoft,
+              textColor: Colors.white,
+              borderColor: NeonPalette.border,
+              glowOpacity: 0.0,
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              borderRadius: 20,
+              fontSize: 14,
+              letterSpacing: 0.8,
+              text: 'STAND',
+            ),
+          ),
+        ],
       ),
     );
   }

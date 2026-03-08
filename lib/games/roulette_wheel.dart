@@ -268,7 +268,7 @@ class RouletteWheel extends PositionComponent {
         text: '$number',
         style: TextStyle(
           color: RouletteNumbers.getNumberTextColor(number),
-          fontSize: 11,
+          fontSize: 10.5,
           fontWeight: FontWeight.w700,
           shadows: [
             Shadow(
@@ -284,6 +284,8 @@ class RouletteWheel extends PositionComponent {
 
     canvas.save();
     canvas.translate(textX, textY);
+    // Keep number labels upright while the wheel spins.
+    canvas.rotate(-rotation);
     textPainter.paint(
       canvas,
       Offset(-textPainter.width / 2, -textPainter.height / 2),

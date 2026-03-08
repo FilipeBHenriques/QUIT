@@ -3,11 +3,9 @@ import 'package:flutter/services.dart';
 import 'dart:math' as math;
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:go_router/go_router.dart';
 import 'package:quit/game_result.dart';
 import 'package:quit/usage_timer.dart';
-import 'package:quit/screens/blackjack_screen.dart';
-import 'package:quit/screens/roulette_screen.dart';
-import 'package:quit/screens/mines_screen.dart';
 import 'package:quit/screens/game_result_screen.dart';
 import 'package:quit/theme/game_icons.dart';
 import 'package:quit/theme/neon_palette.dart';
@@ -121,7 +119,8 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
       if (dailyRanOutTimestamp > 0) {
         final now = DateTime.now().millisecondsSinceEpoch;
         final lastBonus = prefs.getInt('last_bonus_time') ?? 0;
-        final refillSeconds = prefs.getInt('bonus_refill_interval_seconds') ?? 3600;
+        final refillSeconds =
+            prefs.getInt('bonus_refill_interval_seconds') ?? 3600;
         final refillMs = refillSeconds * 1000;
         final cooldownAnchor = math.max(lastBonus, dailyRanOutTimestamp);
         final isBonusAvailable = (now - cooldownAnchor) >= refillMs;
@@ -183,12 +182,15 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
     }
   }
 
-  Future<void> _goToGambleGame(Widget gameScreen) async {
+  Future<void> _closeToHome() async {
+    try {
+      await navigationChannel.invokeMethod('goHome');
+    } catch (_) {}
+  }
+
+  Future<void> _goToGambleGame(String routePath) async {
     await _grantBonusAndMarkChoice();
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => gameScreen),
-    );
+    final result = await context.push(routePath);
 
     if (result != null && result is GameResult) {
       _handleGameResult(result);
@@ -269,6 +271,17 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.close,
+                      color: NeonPalette.textMuted,
+                      size: 20,
+                    ),
+                    onPressed: _closeToHome,
+                  ),
+                ),
                 // Compact Header
                 const Icon(
                   Icons.access_time_outlined,
@@ -361,19 +374,19 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                     _buildCompactGameItem(
                       icon: Icons.style_outlined,
                       label: 'Blackjack',
-                      onPressed: () => _goToGambleGame(const BlackjackScreen()),
+                      onPressed: () => _goToGambleGame('/blackjack'),
                       color: const Color(0xFF111827),
                     ),
                     _buildCompactGameItem(
                       icon: LucideIcons.circleDot,
                       label: 'Roulette',
-                      onPressed: () => _goToGambleGame(const RouletteScreen()),
+                      onPressed: () => _goToGambleGame('/roulette'),
                       color: const Color(0xFF111827),
                     ),
                     _buildCompactGameItem(
                       icon: kDiamond,
                       label: 'Mines',
-                      onPressed: () => _goToGambleGame(const MinesScreen()),
+                      onPressed: () => _goToGambleGame('/mines'),
                       color: NeonPalette.surfaceSoft,
                     ),
                   ],
@@ -386,11 +399,15 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen> {
                   width: double.infinity,
                   child: NeonButton(
                     onPressed: _continueToApp,
-                    color: const Color(0xFFEF4444),
+                    color: NeonPalette.surfaceSoft,
+                    borderColor: const Color(0xFFCBD5E1),
+                    glowColor: Colors.white,
+                    textColor: Colors.white,
+                    glowOpacity: 0.16,
                     padding: const EdgeInsets.symmetric(vertical: 18),
-                    borderRadius: 22,
+                    borderRadius: 24,
                     fontSize: 15,
-                    letterSpacing: 1.2,
+                    letterSpacing: 1.0,
                     text: 'CONTINUE TO APP',
                   ),
                 ),

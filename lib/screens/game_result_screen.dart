@@ -189,6 +189,19 @@ class _GameResultScreenState extends State<GameResultScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.close,
+                      color: NeonPalette.textMuted,
+                      size: 20,
+                    ),
+                    onPressed: () async {
+                      await navigationChannel.invokeMethod('goHome');
+                    },
+                  ),
+                ),
                 Container(
                   width: 64,
                   height: 64,
@@ -355,16 +368,17 @@ class _GameResultScreenState extends State<GameResultScreen>
                   width: double.infinity,
                   child: NeonButton(
                     onPressed: _continue,
-                    color: const Color(0xFFEF4444),
+                    color: NeonPalette.surfaceSoft,
                     borderColor: hasTime
-                        ? const Color(0xFFEF4444)
+                        ? const Color(0xFFCBD5E1)
                         : NeonPalette.border,
-                    textColor: NeonPalette.text,
-                    glowOpacity: hasTime ? 0.45 : 0.12,
+                    glowColor: Colors.white,
+                    textColor: Colors.white,
+                    glowOpacity: hasTime ? 0.16 : 0.0,
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     borderRadius: 22,
                     fontSize: 16,
-                    letterSpacing: 1.2,
+                    letterSpacing: 1.0,
                     text: hasTime ? 'CONTINUE TO APP' : 'GO HOME',
                   ),
                 ),

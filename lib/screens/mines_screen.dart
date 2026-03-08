@@ -6,6 +6,7 @@ import 'dart:ui';
 import '../games/mines_game.dart';
 import '../games/mines_constants.dart';
 import '../theme/neon_palette.dart';
+import '../widgets/game_header.dart';
 import '../widgets/neon_button.dart';
 
 class MinesScreen extends StatefulWidget {
@@ -26,33 +27,14 @@ class _MinesScreenState extends State<MinesScreen>
   double currentMultiplier = 1.0;
   int potentialWin = 0;
 
-  // Animation controllers
-  late AnimationController _buttonPulseController;
-  late Animation<double> _buttonPulseAnimation;
-
   @override
   void initState() {
     super.initState();
-
-    _initializeAnimations();
     _loadRemainingTime();
-  }
-
-  void _initializeAnimations() {
-    // Button pulse animation
-    _buttonPulseController = AnimationController(
-      duration: Duration(milliseconds: MinesConstants.pulseAnimationDuration),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _buttonPulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _buttonPulseController, curve: Curves.easeInOut),
-    );
   }
 
   @override
   void dispose() {
-    _buttonPulseController.dispose();
     super.dispose();
   }
 
@@ -114,84 +96,15 @@ class _MinesScreenState extends State<MinesScreen>
       body: SafeArea(
         child: Column(
           children: [
-            _buildTopBar(),
+            GameHeader(
+              title: MinesConstants.gameTitle,
+              bettingTime: MinesConstants.formatTime(remainingTime),
+              onBack: () => Navigator.pop(context),
+            ),
             Expanded(child: GameWidget(game: _game)),
             _buildBottomControls(),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildTopBar() {
-    final frameColor = const Color(0xFF1F2937);
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: NeonPalette.text),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.06),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: frameColor),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        MinesConstants.gameTitle,
-                        style: const TextStyle(
-                          color: MinesConstants.textColorPrimary,
-                          fontSize: MinesConstants.titleTextSize,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: MinesConstants.titleLetterSpacing,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'BETTING: ${MinesConstants.formatTime(remainingTime)}',
-                        style: const TextStyle(
-                          color: Color(0xFFFDA4AF),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 48), // Balance back button
-        ],
       ),
     );
   }
@@ -207,17 +120,10 @@ class _MinesScreenState extends State<MinesScreen>
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
+            color: Colors.black.withOpacity(0.75),
             border: Border(
               top: BorderSide(color: NeonPalette.border, width: 1),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.35),
-                blurRadius: 12,
-                offset: const Offset(0, -4),
-              ),
-            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -251,8 +157,7 @@ class _MinesScreenState extends State<MinesScreen>
                         child: Text(
                           'REVEAL TILES TO START',
                           style: TextStyle(
-                            color: MinesConstants.textColorSecondary
-                                .withOpacity(0.5),
+                            color: NeonPalette.textMuted.withOpacity(0.6),
                             fontSize: 12,
                             fontWeight: FontWeight.w300,
                             letterSpacing: 2,
@@ -276,12 +181,12 @@ class _MinesScreenState extends State<MinesScreen>
         _buildStatItem(
           label: MinesConstants.diamondsFoundLabel,
           value: '$diamondsFound/${MinesConstants.diamondCount}',
-          color: MinesConstants.textColorPrimary,
+          color: NeonPalette.text,
         ),
         _buildStatItem(
           label: MinesConstants.multiplierLabel,
           value: MinesConstants.formatMultiplier(currentMultiplier),
-          color: MinesConstants.textColorSecondary,
+          color: NeonPalette.text,
         ),
       ],
     );
@@ -297,7 +202,7 @@ class _MinesScreenState extends State<MinesScreen>
         Text(
           label,
           style: TextStyle(
-            color: MinesConstants.textColorSecondary.withOpacity(0.6),
+            color: NeonPalette.textMuted.withOpacity(0.6),
             fontSize: 10,
             fontWeight: FontWeight.w300,
             letterSpacing: 2,
@@ -318,37 +223,32 @@ class _MinesScreenState extends State<MinesScreen>
   }
 
   Widget _buildCashOutButton() {
-    return AnimatedBuilder(
-      animation: _buttonPulseAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: _buttonPulseAnimation.value,
-          child: NeonButton(
-            onPressed: _cashOut,
-            color: const Color(0xFFEF4444),
-            borderColor: const Color(0xFFFDA4AF),
-            padding: const EdgeInsets.symmetric(vertical: 18),
-            borderRadius: 22,
-            fontSize: 14,
-            letterSpacing: 1.1,
-            text:
-                '${MinesConstants.cashOutButton}  ${MinesConstants.formatTime(potentialWin)}',
-          ),
-        );
-      },
+    return NeonButton(
+      onPressed: _cashOut,
+      color: NeonPalette.surfaceSoft,
+      textColor: Colors.white,
+      borderColor: NeonPalette.border,
+      glowOpacity: 0.0,
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      borderRadius: 20,
+      fontSize: 14,
+      letterSpacing: 0.8,
+      text:
+          '${MinesConstants.cashOutButton}  ${MinesConstants.formatTime(potentialWin)}',
     );
   }
 
   Widget _buildResetButton() {
     return NeonButton(
       onPressed: _reset,
-      color: const Color(0xFF1F2937),
+      color: NeonPalette.surfaceSoft,
+      textColor: Colors.white,
       borderColor: NeonPalette.border,
-      glowOpacity: 0.2,
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      borderRadius: 22,
+      glowOpacity: 0.0,
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      borderRadius: 20,
       fontSize: 14,
-      letterSpacing: 1.1,
+      letterSpacing: 0.8,
       text: MinesConstants.resetButton,
     );
   }

@@ -215,18 +215,17 @@ class _BlockedScreenState extends State<BlockedScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         // Compact Header
-                        if (!_isTotalBlock)
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.close,
-                                color: NeonPalette.textMuted,
-                                size: 20,
-                              ),
-                              onPressed: _closeActivity,
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.close,
+                              color: NeonPalette.textMuted,
+                              size: 20,
                             ),
+                            onPressed: _closeActivity,
                           ),
+                        ),
 
                         Icon(
                           _isBonusCooldown ? Icons.timer_outlined : Icons.block,
@@ -424,17 +423,6 @@ class _BlockedScreenState extends State<BlockedScreen> {
                         ],
 
                         const SizedBox(height: 24),
-                        if (!_isTotalBlock)
-                          TextButton(
-                            onPressed: _closeActivity,
-                            child: const Text(
-                              'I\'ll do something else',
-                              style: TextStyle(
-                                color: NeonPalette.textMuted,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
                       ],
                     ),
                   ),

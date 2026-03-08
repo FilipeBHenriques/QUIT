@@ -7,6 +7,7 @@ class NeonButton extends StatelessWidget {
   final Color color;
   final Color textColor;
   final Color? borderColor;
+  final Color? glowColor;
   final double glowOpacity;
   final double borderRadius;
   final double? fontSize;
@@ -21,6 +22,7 @@ class NeonButton extends StatelessWidget {
     this.color = const Color(0xFFEF4444),
     this.textColor = Colors.white,
     this.borderColor,
+    this.glowColor,
     this.glowOpacity = 0.45,
     this.borderRadius = 16,
     this.fontSize,
@@ -41,24 +43,28 @@ class NeonButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(borderRadius),
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(glowOpacity),
-                  blurRadius: 17,
-                  spreadRadius: 0,
+                  color: (glowColor ?? color).withOpacity(glowOpacity),
+                  blurRadius: 22,
+                  spreadRadius: 1,
                 ),
               ],
-            ),
-        textStyle: (context, states, style) =>
-            style.copyWith(
-              color: textColor,
-              fontWeight: fontWeight,
-              fontSize: fontSize,
-              letterSpacing: letterSpacing,
             ),
         padding: (context, states, defaultPadding) => padding,
       ),
       child: SizedBox(
         width: double.infinity,
-        child: Center(child: Text(text, textAlign: TextAlign.center)),
+        child: Center(
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: textColor,
+              fontWeight: fontWeight,
+              fontSize: fontSize,
+              letterSpacing: letterSpacing,
+            ),
+          ),
+        ),
       ),
     );
   }
