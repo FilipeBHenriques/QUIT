@@ -11,8 +11,6 @@ import 'screens/blackjack_screen.dart';
 import 'screens/roulette_screen.dart';
 import 'screens/mines_screen.dart';
 import 'package:go_router/go_router.dart';
-import 'widgets/game_card.dart';
-import 'theme/game_icons.dart';
 
 void main() async {
   flutter.WidgetsFlutterBinding.ensureInitialized();
@@ -105,17 +103,25 @@ class HomeScreen extends flutter.StatefulWidget {
 }
 
 class _HomeScreenState extends flutter.State<HomeScreen>
-    with flutter.WidgetsBindingObserver {
+    with
+        flutter.WidgetsBindingObserver,
+        flutter.SingleTickerProviderStateMixin {
   static const platform = MethodChannel('com.quit.app/monitoring');
+  late final flutter.AnimationController _qGlowController;
 
   @override
   void initState() {
     super.initState();
     flutter.WidgetsBinding.instance.addObserver(this);
+    _qGlowController = flutter.AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat(reverse: true);
   }
 
   @override
   void dispose() {
+    _qGlowController.dispose();
     flutter.WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -159,46 +165,75 @@ class _HomeScreenState extends flutter.State<HomeScreen>
   @override
   flutter.Widget build(flutter.BuildContext context) {
     return Scaffold(
-      child: flutter.Center(
-        child: flutter.Column(
-          mainAxisAlignment: flutter.MainAxisAlignment.center,
-          children: [
-            const flutter.SizedBox(height: 40),
-            OutlineButton(
-              onPressed: () async {
-                await context.push('/blocking_selection');
-                _syncServicesIfNeeded();
-              },
-              density: ButtonDensity.icon,
-              child: const Icon(LucideIcons.shieldBan),
-            ),
-            // Game buttons - PURE SHADCN
-            Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              alignment: WrapAlignment.center,
-              children: [
-                GameCard(
-                  icon: LucideIcons.spade,
-                  label: 'Blackjack',
-                  variant: GameCardVariant.primary,
-                  onClick: () => context.push('/blackjack'),
+      child: flutter.Container(
+        decoration: const flutter.BoxDecoration(
+          gradient: flutter.LinearGradient(
+            begin: flutter.Alignment.topCenter,
+            end: flutter.Alignment.bottomCenter,
+            colors: [
+              flutter.Color(0xFF06090F),
+              flutter.Color(0xFF0B1220),
+              flutter.Color(0xFF05070B),
+            ],
+          ),
+        ),
+        child: flutter.Center(
+          child: flutter.Column(
+            mainAxisAlignment: flutter.MainAxisAlignment.center,
+            children: [
+              flutter.GestureDetector(
+                onTap: () async {
+                  await context.push('/blocking_selection');
+                  _syncServicesIfNeeded();
+                },
+                child: flutter.AnimatedBuilder(
+                  animation: _qGlowController,
+                  builder: (context, _) {
+                    final t = _qGlowController.value;
+                    final pulse = 0.96 + (t * 0.08);
+                    final ringGlow = 0.18 + (t * 0.34);
+                    final textGlow = 0.38 + (t * 0.5);
+                    return flutter.Transform.scale(
+                      scale: pulse,
+                      child: flutter.Container(
+                        width: 190,
+                        height: 190,
+                        alignment: flutter.Alignment.center,
+                        decoration: flutter.BoxDecoration(
+                          shape: flutter.BoxShape.circle,
+                          boxShadow: [
+                            flutter.BoxShadow(
+                              color: const flutter.Color(
+                                0xFFFFFFFF,
+                              ).withOpacity(ringGlow),
+                              blurRadius: 56,
+                              spreadRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: flutter.Text(
+                          'Q',
+                          style: flutter.TextStyle(
+                            color: const flutter.Color(0xFFFFFFFF),
+                            fontSize: 122,
+                            fontWeight: flutter.FontWeight.w700,
+                            shadows: [
+                              flutter.Shadow(
+                                color: const flutter.Color(
+                                  0xFFFFFFFF,
+                                ).withOpacity(textGlow),
+                                blurRadius: 34,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                GameCard(
-                  icon: LucideIcons.circleDot,
-                  label: 'Roulette',
-                  variant: GameCardVariant.destructive,
-                  onClick: () => context.push('/roulette'),
-                ),
-                GameCard(
-                  icon: kDiamond,
-                  label: 'Mines',
-                  variant: GameCardVariant.success,
-                  onClick: () => context.push('/mines'),
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
