@@ -18,12 +18,12 @@ class GameConstants {
   static const double deckXRatio = 0.95;
   static const double deckCenterYRatio = 0.5;
 
-  static const double dealerCardsYRatio = 0.25;
-  static const double playerCardsYRatio = 0.80;
+  static const double dealerCardsYRatio = 0.28;
+  static const double playerCardsYRatio = 0.82;
   static const double dealerLabelYRatio = 0.05;
-  static const double playerLabelYRatio = 0.67;
-  static const double dealerScoreYRatio = 0.125;
-  static const double playerScoreYRatio = 0.70;
+  static const double playerLabelYRatio = 0.60;
+  static const double dealerScoreYRatio = 0.14;
+  static const double playerScoreYRatio = 0.68;
 
   static const int deckShuffleThreshold = 15;
   static const int dealerStandThreshold = 17;
@@ -55,7 +55,19 @@ class GameText {
 class CardDeck {
   static const List<String> suits = ['♠', '♥', '♦', '♣'];
   static const List<String> values = [
-    'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K',
+    'A',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    '10',
+    'J',
+    'Q',
+    'K',
   ];
 
   static const int totalCards = 52;
@@ -95,8 +107,10 @@ class BlackjackGame extends FlameGame with TapCallbacks {
 
   final List<Spotlight> spotlights = [];
 
-  Vector2 get deckPosition =>
-      Vector2(GameConstants.deckXRatio, size.y * GameConstants.deckCenterYRatio);
+  Vector2 get deckPosition => Vector2(
+    GameConstants.deckXRatio,
+    size.y * GameConstants.deckCenterYRatio,
+  );
 
   Vector2 get dealerCardStart =>
       Vector2(size.x / 2 - 140, size.y * GameConstants.dealerCardsYRatio);
@@ -375,7 +389,10 @@ class BlackjackGame extends FlameGame with TapCallbacks {
       gameName: 'Blackjack',
       resultMessage: message,
     );
-    Future.delayed(const Duration(seconds: 2), () => onGameComplete?.call(result));
+    Future.delayed(
+      const Duration(seconds: 2),
+      () => onGameComplete?.call(result),
+    );
   }
 
   void _setMessage(String text) => messageText.text = text;
@@ -597,16 +614,18 @@ class PlayingCard extends PositionComponent {
 
   void _renderShadow(Canvas canvas) {
     canvas.drawPath(
-      Path()
-        ..addRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(0, 6, size.x, size.y),
-            Radius.circular(GameConstants.cardRadius),
-          ),
+      Path()..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(0, 6, size.x, size.y),
+          Radius.circular(GameConstants.cardRadius),
         ),
+      ),
       Paint()
         ..color = Colors.black.withValues(alpha: 0.45)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, GameConstants.shadowBlur),
+        ..maskFilter = MaskFilter.blur(
+          BlurStyle.normal,
+          GameConstants.shadowBlur,
+        ),
     );
   }
 
@@ -615,19 +634,11 @@ class PlayingCard extends PositionComponent {
       Rect.fromLTWH(0, 0, size.x, size.y),
       Radius.circular(GameConstants.cardRadius),
     );
+    canvas.drawRRect(cardRect, Paint()..color = const Color(0xFFF8F8FA));
     canvas.drawRRect(
       cardRect,
       Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFFFF), Color(0xFFF5F5F8)],
-        ).createShader(Rect.fromLTWH(0, 0, size.x, size.y)),
-    );
-    canvas.drawRRect(
-      cardRect,
-      Paint()
-        ..color = const Color(0xFFD8DAE0)
+        ..color = const Color(0xFFCCCED6)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 0.5,
     );
@@ -638,60 +649,44 @@ class PlayingCard extends PositionComponent {
   }
 
   void _renderCardBack(Canvas canvas) {
+    // Dark background
     final backRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(3, 3, size.x - 6, size.y - 6),
-      Radius.circular(GameConstants.cardRadius - 2),
+      Rect.fromLTWH(4, 4, size.x - 8, size.y - 8),
+      Radius.circular(GameConstants.cardRadius - 1),
     );
+    canvas.drawRRect(backRect, Paint()..color = const Color(0xFF080A14));
+    // Diagonal stripes
+    _renderBackDiagonals(canvas, backRect);
+    // Single clean border frame
     canvas.drawRRect(
-      backRect,
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(9, 9, size.x - 18, size.y - 18),
+        const Radius.circular(5),
+      ),
       Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0A0C14), Color(0xFF060810)],
-        ).createShader(Rect.fromLTWH(3, 3, size.x - 6, size.y - 6)),
+        ..color = const Color.fromARGB(
+          255,
+          231,
+          255,
+          92,
+        ).withValues(alpha: 0.22)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.5,
     );
-    _renderBackGrid(canvas);
     _renderBackLogo(canvas);
   }
 
-  void _renderBackGrid(Canvas canvas) {
-    // Cyan grid
-    final gridPaint = Paint()
-      ..color = const Color(0xFF00F0FF).withValues(alpha: 0.08)
+  void _renderBackDiagonals(Canvas canvas, RRect clip) {
+    final paint = Paint()
+      ..color = const Color(0xFF9B5CFF).withValues(alpha: 0.07)
       ..strokeWidth = 0.5;
+    canvas.save();
+    canvas.clipRRect(clip);
     const step = 10.0;
-    for (double x = 6; x <= size.x - 6; x += step) {
-      canvas.drawLine(Offset(x, 6), Offset(x, size.y - 6), gridPaint);
+    for (double d = -size.y; d <= size.x + size.y; d += step) {
+      canvas.drawLine(Offset(d, 4), Offset(d + size.y, size.y - 4), paint);
     }
-    for (double y = 6; y <= size.y - 6; y += step) {
-      canvas.drawLine(Offset(6, y), Offset(size.x - 6, y), gridPaint);
-    }
-
-    // Nested frames
-    final framePaint = Paint()
-      ..color = const Color(0xFF00F0FF).withValues(alpha: 0.14)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-    for (int i = 0; i < 3; i++) {
-      final inset = 6.0 + (i * 5.0);
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(inset, inset, size.x - inset * 2, size.y - inset * 2),
-          const Radius.circular(4),
-        ),
-        framePaint,
-      );
-    }
-
-    // Cyan stripe
-    canvas.drawLine(
-      Offset(size.x * 0.25, size.y * 0.88),
-      Offset(size.x * 0.75, size.y * 0.88),
-      Paint()
-        ..color = const Color(0xFF00F0FF).withValues(alpha: 0.55)
-        ..strokeWidth = 1.0,
-    );
+    canvas.restore();
   }
 
   void _renderBackLogo(Canvas canvas) {
@@ -699,14 +694,14 @@ class PlayingCard extends PositionComponent {
       text: const TextSpan(
         text: 'Q',
         style: TextStyle(
-          color: Color(0xFF00F0FF),
-          fontSize: 30,
-          fontWeight: FontWeight.w900,
+          color: Color.fromARGB(255, 255, 255, 255),
+          fontSize: 26,
+          fontWeight: FontWeight.w800,
           shadows: [
             Shadow(
-              color: Color(0xFF00F0FF),
+              color: Color.fromARGB(255, 255, 255, 255),
               offset: Offset.zero,
-              blurRadius: 12,
+              blurRadius: 18,
             ),
           ],
         ),
@@ -721,8 +716,7 @@ class PlayingCard extends PositionComponent {
 
   void _renderCardFace(Canvas canvas) {
     final isRed = CardDeck.isRedSuit(suit);
-    final cardColor =
-        isRed ? const Color(0xFFDC2626) : const Color(0xFF0F1018);
+    final cardColor = isRed ? const Color(0xFFDC2626) : const Color(0xFF0F1018);
     _renderCorner(canvas, cardColor);
     _renderRotatedCorner(canvas, cardColor);
     _renderCenterSuit(canvas, cardColor);
@@ -771,9 +765,9 @@ class PlayingCard extends PositionComponent {
       text: TextSpan(
         text: suit,
         style: TextStyle(
-          color: color.withValues(alpha: 0.10),
-          fontSize: 68,
-          fontWeight: FontWeight.w100,
+          color: color.withValues(alpha: 0.20),
+          fontSize: 40,
+          fontWeight: FontWeight.w400,
           height: 1.0,
         ),
       ),

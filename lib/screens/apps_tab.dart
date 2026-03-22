@@ -57,6 +57,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
 
   Future<void> _initializeTimer() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.reload(); // get fresh data immediately on open
     _usageTimer = UsageTimer(prefs);
     await _usageTimer!.checkAndResetIfNeeded();
     setState(() {
@@ -240,8 +241,8 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                     children: [
                       Expanded(
                         child: _StatColumn(
-                          label: 'Used Today',
-                          value: _usageTimer!.usedTodayFormatted,
+                          label: 'Daily Used',
+                          value: _usageTimer!.dailyTimeUsedFormatted,
                           valueColor: kAccent,
                           align: CrossAxisAlignment.start,
                         ),
@@ -256,6 +257,52 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                       ),
                     ],
                   ),
+                  if (_usageTimer!.bonusUsedTodaySeconds > 0) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFB800).withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(
+                            0xFFFFB800,
+                          ).withValues(alpha: 0.25),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.bolt_rounded,
+                            size: 13,
+                            color: Color(0xFFFFB800),
+                          ),
+                          const SizedBox(width: 5),
+                          const Text(
+                            'Bonus used',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFFFB800),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _usageTimer!.bonusUsedTodayFormatted,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFFFB800),
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Text(
                     'Resets in ${_usageTimer!.formatDuration(_usageTimer!.timeUntilReset())}',
@@ -265,21 +312,6 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                     ),
                   ),
                   const SizedBox(height: 14),
-                  NeonButton(
-                    onPressed: () {
-                      _usageTimer?.resetTimer();
-                      setState(() {});
-                    },
-                    text: 'Reset Usage',
-                    color: kAccent.withValues(alpha: 0.08),
-                    textColor: kAccent,
-                    borderColor: kAccent.withValues(alpha: 0.30),
-                    glowColor: kAccent,
-                    glowOpacity: 0.10,
-                    borderRadius: 10,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    fontSize: 13,
-                  ),
                 ],
               ],
             ),
@@ -300,10 +332,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                 decoration: BoxDecoration(
                   color: NeonPalette.surface,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: NeonPalette.border,
-                    width: 0.5,
-                  ),
+                  border: Border.all(color: NeonPalette.border, width: 0.5),
                 ),
                 child: const Row(
                   children: [
@@ -342,8 +371,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                     separatorBuilder: (_, _) => const SizedBox(height: 2),
                     itemBuilder: (context, index) {
                       final app = displayedApps[index];
-                      final isBlocked =
-                          _blockedApps.contains(app.packageName);
+                      final isBlocked = _blockedApps.contains(app.packageName);
 
                       return Container(
                         decoration: BoxDecoration(

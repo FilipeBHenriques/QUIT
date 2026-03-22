@@ -225,6 +225,14 @@ class UsageTimer {
   // Get used today as formatted string
   String get usedTodayFormatted => formatSeconds(usedTodaySeconds);
 
+  // Daily time used (capped at daily limit — excludes bonus time)
+  int get dailyTimeUsedSeconds => min(usedTodaySeconds, dailyLimitSeconds);
+  String get dailyTimeUsedFormatted => formatSeconds(dailyTimeUsedSeconds);
+
+  // Bonus time consumed today (time used beyond the daily limit)
+  int get bonusUsedTodaySeconds => max(0, usedTodaySeconds - dailyLimitSeconds);
+  String get bonusUsedTodayFormatted => formatSeconds(bonusUsedTodaySeconds);
+
   // Reload from SharedPreferences (for polling)
   Future<void> reload() async {
     await _prefs.reload();
