@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
 import 'package:quit/theme/neon_palette.dart';
 
 const int holdDurationSeconds = 5;
@@ -13,85 +12,125 @@ class HoldToUnblockButton extends StatefulWidget {
   State<HoldToUnblockButton> createState() => _HoldToUnblockButtonState();
 }
 
-class _HoldToUnblockButtonState extends State<HoldToUnblockButton> {
-  bool _holding = false;
-  Timer? _timer;
-  int _secondsHeld = 0;
+class _HoldToUnblockButtonState extends State<HoldToUnblockButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  bool _triggered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: holdDurationSeconds),
+    );
+    _controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed && !_triggered) {
+        _triggered = true;
+        widget.onUnblocked().then((_) {
+          if (mounted) {
+            _controller.reset();
+            setState(() => _triggered = false);
+          }
+        });
+      }
+    });
+  }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _controller.dispose();
     super.dispose();
+  }
+
+  void _startHold() {
+    if (!_triggered) _controller.forward();
+  }
+
+  void _stopHold() {
+    if (!_triggered) _controller.reverse();
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: (_) {
-        setState(() {
-          _holding = true;
-          _secondsHeld = 0;
-        });
-        _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-          setState(() {
-            _secondsHeld++;
-          });
-          if (_secondsHeld >= holdDurationSeconds) {
-            timer.cancel();
-            widget.onUnblocked().then((_) {
-              if (mounted) {
-                setState(() {
-                  _holding = false;
-                  _secondsHeld = 0;
-                });
-              }
-            });
-          }
-        });
-      },
-      onTapUp: (_) {
-        _timer?.cancel();
-        setState(() {
-          _holding = false;
-          _secondsHeld = 0;
-        });
-      },
-      onTapCancel: () {
-        _timer?.cancel();
-        setState(() {
-          _holding = false;
-          _secondsHeld = 0;
-        });
-      },
-      child: Container(
-        width: 80,
-        height: 40,
-        decoration: BoxDecoration(
-          color: _holding ? NeonPalette.rose : NeonPalette.surfaceSoft,
-          border: Border.all(
-            color: _holding ? NeonPalette.rose : NeonPalette.border,
-          ),
-          boxShadow: _holding
-              ? [
-                  BoxShadow(
-                    color: NeonPalette.rose.withOpacity(0.4),
-                    blurRadius: 10,
-                    spreadRadius: 1,
-                  ),
-                ]
-              : null,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Center(
-          child: Text(
-            _holding ? '${holdDurationSeconds - _secondsHeld}s' : 'Hold',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
+      onTapDown: (_) => _startHold(),
+      onTapUp: (_) => _stopHold(),
+      onTapCancel: () => _stopHold(),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final progress = _controller.value;
+          final isHolding = progress > 0;
+          final secondsLeft =
+              (holdDurationSeconds - (progress * holdDurationSeconds).ceil())
+                  .clamp(0, holdDurationSeconds);
+
+          return Container(
+            width: 88,
+            height: 40,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isHolding
+                    ? NeonPalette.rose.withValues(
+                        alpha: 0.45 + progress * 0.40,
+                      )
+                    : NeonPalette.border,
+                width: 0.5,
+              ),
+              boxShadow: isHolding
+                  ? [
+                      BoxShadow(
+                        color: NeonPalette.rose.withValues(
+                          alpha: 0.10 + progress * 0.22,
+                        ),
+                        blurRadius: 14,
+                        spreadRadius: 0,
+                      ),
+                    ]
+                  : null,
             ),
-          ),
-        ),
+            clipBehavior: Clip.hardEdge,
+            child: Stack(
+              children: [
+                // Base
+                Container(color: NeonPalette.surfaceSoft),
+
+                // Fill bar
+                FractionallySizedBox(
+                  widthFactor: progress,
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          NeonPalette.rose.withValues(alpha: 0.25),
+                          NeonPalette.rose.withValues(alpha: 0.40),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Label
+                Center(
+                  child: Text(
+                    isHolding ? '${secondsLeft}s' : 'Hold',
+                    style: TextStyle(
+                      color: isHolding
+                          ? NeonPalette.rose
+                          : NeonPalette.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

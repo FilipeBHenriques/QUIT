@@ -12,7 +12,8 @@ class BlockedScreen extends StatefulWidget {
   State<BlockedScreen> createState() => _BlockedScreenState();
 }
 
-class _BlockedScreenState extends State<BlockedScreen> {
+class _BlockedScreenState extends State<BlockedScreen>
+    with TickerProviderStateMixin {
   static const blockedAppChannel = MethodChannel('com.quit.app/blocked_app');
   static const navigationChannel = MethodChannel('com.quit.app/navigation');
   static const monitoringChannel = MethodChannel('com.quit.app/monitoring');
@@ -22,36 +23,36 @@ class _BlockedScreenState extends State<BlockedScreen> {
   bool _loading = true;
   bool _isTimeLimitExceeded = false;
   int _dailyLimitSeconds = 0;
-  int _initialRemainingSeconds = 0;
   bool _isBonusCooldown = false;
-  int _timeUntilBonusSeconds = 0;
   bool _isTotalBlock = false;
+  bool _isRedirecting = false;
 
   UsageTimer? _usageTimer;
-
   Timer? _updateTimer;
+
+  late final AnimationController _pulseController;
 
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat(reverse: true);
+
     _initializeTimer();
     _loadBlockedAppInfo();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    // Update UI every second for real-time countdown
     _updateTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (mounted && _usageTimer != null) {
         await _usageTimer!.reload();
         setState(() {
-          // Check daily reset
           if (_usageTimer!.shouldReset()) {
             _handleTimerReset();
             return;
           }
-
-          // Check if bonus cooldown just finished
           if (_isBonusCooldown && _usageTimer!.timeUntilNextBonus == null) {
-            print('🎁 Bonus cooldown finished - relaunching app');
             _retryLaunchApp();
           }
         });
@@ -72,41 +73,29 @@ class _BlockedScreenState extends State<BlockedScreen> {
       final appName = info['appName'] as String?;
       final timeLimit = info['timeLimit'] as bool? ?? false;
       final dailyLimit = info['dailyLimitSeconds'] as int? ?? 0;
-      final remaining = info['remainingSeconds'] as int? ?? 0;
-
       final bonusCooldown = info['bonusCooldown'] as bool? ?? false;
-      final timeUntilBonusMs = info['timeUntilBonusMs'] as int? ?? 0;
 
       setState(() {
         _blockedPackageName = packageName;
         _appName = appName ?? packageName;
         _isTimeLimitExceeded = timeLimit;
         _dailyLimitSeconds = dailyLimit;
-        _initialRemainingSeconds = remaining;
         _isBonusCooldown = bonusCooldown;
-        _timeUntilBonusSeconds = (timeUntilBonusMs / 1000).round();
         _isTotalBlock = info['totalBlock'] as bool? ?? false;
-
         _loading = false;
       });
-    } catch (e) {
-      print('❌ Error loading blocked app info: $e');
+    } catch (_) {
       setState(() => _loading = false);
     }
   }
 
-  Future<void> _handleTimerReset() async {
-    print('🔄 Timer reset detected - closing blocking screen');
-    _closeActivity();
-  }
+  Future<void> _handleTimerReset() async => _closeActivity();
 
   Future<void> _launchUnblockedApp() async {
     if (_blockedPackageName == null) {
       _closeActivity();
       return;
     }
-
-    print('🚀 Unblocking and launching: $_blockedPackageName');
 
     SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
@@ -117,32 +106,25 @@ class _BlockedScreenState extends State<BlockedScreen> {
       await monitoringChannel.invokeMethod('updateBlockedApps', {
         'blockedApps': blockedApps,
       });
-    } catch (e) {
-      print('⚠️ Error updating monitoring: $e');
-    }
+    } catch (_) {}
 
     try {
       await navigationChannel.invokeMethod('launchApp', {
         'packageName': _blockedPackageName,
       });
-    } catch (e) {
-      print('❌ Error launching app: $e');
+    } catch (_) {
       _closeActivity();
     }
   }
 
-  bool _isRedirecting = false;
-
   Future<void> _launchSafeSearch() async {
     if (_isRedirecting) return;
     setState(() => _isRedirecting = true);
-
     try {
       await navigationChannel.invokeMethod('launchUrl', {
         'url': 'https://www.google.com',
       });
-    } catch (e) {
-      print('❌ Error launching safe search: $e');
+    } catch (_) {
       _closeActivity();
     }
   }
@@ -152,88 +134,135 @@ class _BlockedScreenState extends State<BlockedScreen> {
       if (_blockedPackageName == null) _closeActivity();
       return;
     }
-
     _isRedirecting = true;
-    print('🔁 Bonus ready - relaunching: $_blockedPackageName');
-
     try {
       await navigationChannel.invokeMethod('launchApp', {
         'packageName': _blockedPackageName,
       });
-    } catch (e) {
-      print('❌ Error relaunching app: $e');
+    } catch (_) {
       _closeActivity();
     }
   }
 
   Future<void> _closeActivity() async {
-    print('🔴 Closing blocked screen - going home');
     try {
       await navigationChannel.invokeMethod('goHome');
-    } catch (e) {
-      print('❌ Error going home: $e');
-    }
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _updateTimer?.cancel();
+    _pulseController.dispose();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final timeUntilReset = _usageTimer?.timeUntilReset() ?? Duration.zero;
-    final remainingFormatted = _usageTimer?.remainingFormatted ?? "0:00";
+    final remainingFormatted = _usageTimer?.remainingFormatted ?? '0:00';
     final timeUntilBonus = _usageTimer?.timeUntilNextBonus ?? Duration.zero;
     final bonusCountdownFormatted =
-        _usageTimer?.formatDuration(timeUntilBonus) ?? "0:00";
-    final dailyLimitFormatted = _usageTimer?.formatSeconds(_dailyLimitSeconds);
-
-    // Monochrome shimmer
-    final shinyGradient = LinearGradient(
-      colors: [
-        const Color(0xFFE5E7EB),
-        const Color(0xFFFFFFFF),
-        const Color(0xFFE5E7EB),
-      ],
-      stops: const [0.0, 0.5, 1.0],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      transform: const GradientRotation(0.5),
-    );
+        _usageTimer?.formatDuration(timeUntilBonus) ?? '0:00';
+    final dailyLimitFormatted =
+        _usageTimer?.formatSeconds(_dailyLimitSeconds) ?? '';
 
     return PopScope(
       canPop: false,
       child: Scaffold(
         backgroundColor: NeonPalette.bg,
         body: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: NeonPalette.violet,
+                  strokeWidth: 1.5,
+                ),
+              )
             : SafeArea(
                 child: Center(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 24.0,
-                      vertical: 20.0,
+                      horizontal: 28,
+                      vertical: 20,
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Compact Header
+                        // Top row
                         Align(
                           alignment: Alignment.centerRight,
-                          child: IconButton(
-                            icon: const Icon(
-                              Icons.close,
-                              color: NeonPalette.textMuted,
-                              size: 20,
+                          child: GestureDetector(
+                            onTap: _closeActivity,
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: NeonPalette.surfaceSoft,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: NeonPalette.border,
+                                  width: 0.5,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: NeonPalette.textMuted,
+                                size: 14,
+                              ),
                             ),
-                            onPressed: _closeActivity,
                           ),
                         ),
 
-                        Icon(
-                          _isBonusCooldown ? Icons.timer_outlined : Icons.block,
-                          size: 56,
-                          color: Colors.white70,
-                        ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 32),
 
+                        // Block icon
+                        AnimatedBuilder(
+                          animation: _pulseController,
+                          builder: (context, _) {
+                            final t = _pulseController.value;
+                            final iconColor = _isTotalBlock
+                                ? NeonPalette.rose
+                                : (_isBonusCooldown
+                                      ? NeonPalette.amber
+                                      : NeonPalette.textMuted);
+                            return Container(
+                              width: 72,
+                              height: 72,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: iconColor.withValues(alpha: 0.06),
+                                border: Border.all(
+                                  color: iconColor.withValues(
+                                    alpha: 0.18 + t * 0.18,
+                                  ),
+                                  width: 0.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: iconColor.withValues(
+                                      alpha: 0.10 + t * 0.12,
+                                    ),
+                                    blurRadius: 24,
+                                    spreadRadius: 0,
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                _isBonusCooldown
+                                    ? Icons.timer_outlined
+                                    : Icons.block_rounded,
+                                size: 30,
+                                color: iconColor.withValues(alpha: 0.7 + t * 0.3),
+                              ),
+                            );
+                          },
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // Title
                         Text(
                           _isTotalBlock
                               ? 'Access Restricted'
@@ -243,130 +272,139 @@ class _BlockedScreenState extends State<BlockedScreen> {
                                           ? 'Time Limit Met'
                                           : 'App Restricted')),
                           style: const TextStyle(
-                            fontSize: 22,
+                            fontSize: 24,
                             fontWeight: FontWeight.w800,
                             color: NeonPalette.text,
                             letterSpacing: -0.5,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 4),
+
+                        const SizedBox(height: 6),
+
                         Text(
                           _appName ?? _blockedPackageName ?? 'Current App',
-                          style: TextStyle(
-                            fontSize: 14,
+                          style: const TextStyle(
+                            fontSize: 13,
                             color: NeonPalette.textMuted,
                             fontWeight: FontWeight.w500,
                           ),
                           textAlign: TextAlign.center,
                         ),
 
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 40),
 
-                        // MAIN CONTENT (LOGIC PRESERVED)
-
-                        // BONUS COOLDOWN MODE
+                        // ── BONUS COOLDOWN ──
                         if (_isBonusCooldown) ...[
                           const Text(
                             'NEXT BONUS IN',
                             style: TextStyle(
-                              color: Colors.white38,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 2,
+                              color: NeonPalette.textMuted,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 3,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           ShaderMask(
-                            shaderCallback: (bounds) =>
-                                shinyGradient.createShader(bounds),
+                            shaderCallback: (bounds) => const LinearGradient(
+                              colors: [
+                                Color(0xFFFFAB00),
+                                Color(0xFFFFF3CD),
+                                Color(0xFFFFAB00),
+                              ],
+                            ).createShader(bounds),
                             child: Text(
                               bonusCountdownFormatted,
                               style: const TextStyle(
-                                fontSize: 64,
+                                fontSize: 68,
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,
-                                fontFeatures: [FontFeature.tabularFigures()],
                                 letterSpacing: -2,
+                                fontFeatures: [FontFeature.tabularFigures()],
                               ),
                             ),
                           ),
                           const SizedBox(height: 24),
-
-                          // Compact Info Grid
                           Container(
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(18),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.05),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.white10),
+                              color: NeonPalette.surface,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: NeonPalette.border,
+                                width: 0.5,
+                              ),
                             ),
                             child: Row(
                               children: [
                                 Expanded(
-                                  child: _buildCompactInfo(
-                                    'DAILY LEFT',
-                                    remainingFormatted,
-                                    Colors.white,
+                                  child: _InfoCell(
+                                    label: 'DAILY LEFT',
+                                    value: remainingFormatted,
                                   ),
                                 ),
                                 Container(
-                                  width: 1,
-                                  height: 24,
-                                  color: Colors.white10,
+                                  width: 0.5,
+                                  height: 28,
+                                  color: NeonPalette.border,
                                 ),
                                 Expanded(
-                                  child: _buildCompactInfo(
-                                    'RESETS IN',
-                                    _usageTimer?.formatDuration(
+                                  child: _InfoCell(
+                                    label: 'RESETS IN',
+                                    value: _usageTimer?.formatDuration(
                                           timeUntilReset,
                                         ) ??
                                         '',
-                                    NeonPalette.text,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
                           const Text(
-                            '💡 Bonus time grants 5m of access.',
+                            'Bonus time grants 5 minutes of access.',
                             style: TextStyle(
                               color: NeonPalette.textMuted,
-                              fontSize: 11,
+                              fontSize: 12,
                             ),
                           ),
                         ]
-                        // TIME LIMIT MODE
+
+                        // ── TIME LIMIT ──
                         else if (_isTimeLimitExceeded) ...[
                           Container(
+                            width: double.infinity,
                             padding: const EdgeInsets.symmetric(
-                              vertical: 20,
+                              vertical: 24,
                               horizontal: 24,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.04),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.white12),
+                              color: NeonPalette.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: NeonPalette.border,
+                                width: 0.5,
+                              ),
                             ),
                             child: Column(
                               children: [
                                 const Text(
                                   'DAILY REMAINING',
                                   style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.5,
+                                    color: NeonPalette.textMuted,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 2.5,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 10),
                                 Text(
                                   remainingFormatted,
                                   style: const TextStyle(
-                                    fontSize: 48,
+                                    fontSize: 52,
                                     fontWeight: FontWeight.w900,
-                                    color: Colors.white,
+                                    color: NeonPalette.text,
                                     fontFeatures: [
                                       FontFeature.tabularFigures(),
                                     ],
@@ -375,49 +413,49 @@ class _BlockedScreenState extends State<BlockedScreen> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
                           Text(
-                            'Limit: $dailyLimitFormatted • Resets in ${_usageTimer?.formatDuration(timeUntilReset) ?? ""}',
-                            style: TextStyle(
+                            'Limit: $dailyLimitFormatted  ·  Resets in ${_usageTimer?.formatDuration(timeUntilReset) ?? ""}',
+                            style: const TextStyle(
                               color: NeonPalette.textMuted,
                               fontSize: 12,
                             ),
                           ),
                         ]
-                        // NORMAL BLOCK MODE
+
+                        // ── NORMAL BLOCK ──
                         else if (!_isTotalBlock) ...[
                           const Text(
-                            'This app is currently managed.\nPlease check back later.',
+                            'This app is currently managed.\nCheck back later.',
                             style: TextStyle(
                               fontSize: 15,
                               color: NeonPalette.textMuted,
-                              height: 1.5,
+                              height: 1.6,
                             ),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 32),
-                          _buildActionButton(
+                          _ActionButton(
                             label: 'UNBLOCK APP',
                             onPressed: _launchUnblockedApp,
-                            color: Colors.white,
-                            textColor: Colors.black,
+                            filled: true,
                           ),
                         ],
 
-                        // WEBSITE / TOTAL BLOCK MODE
+                        // ── TOTAL BLOCK ──
                         if (_isTotalBlock) ...[
                           const SizedBox(height: 8),
-                          _buildActionButton(
+                          _ActionButton(
                             label: 'GO TO GOOGLE',
                             onPressed: _launchSafeSearch,
-                            color: Colors.white,
-                            textColor: Colors.black,
-                            icon: Icons.search,
+                            filled: true,
+                            icon: Icons.search_rounded,
                           ),
-                          const SizedBox(height: 12),
-                          _buildOutlineButton(
+                          const SizedBox(height: 10),
+                          _ActionButton(
                             label: 'BACK TO HOME',
                             onPressed: _closeActivity,
+                            filled: false,
                             icon: Icons.home_outlined,
                           ),
                         ],
@@ -431,8 +469,16 @@ class _BlockedScreenState extends State<BlockedScreen> {
       ),
     );
   }
+}
 
-  Widget _buildCompactInfo(String label, String value, Color valueColor) {
+class _InfoCell extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _InfoCell({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       children: [
         Text(
@@ -440,105 +486,100 @@ class _BlockedScreenState extends State<BlockedScreen> {
           style: const TextStyle(
             color: NeonPalette.textMuted,
             fontSize: 9,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.5,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           value,
-          style: TextStyle(
-            color: valueColor,
-            fontSize: 18,
+          style: const TextStyle(
+            color: NeonPalette.text,
+            fontSize: 20,
             fontWeight: FontWeight.w800,
-            fontFeatures: const [FontFeature.tabularFigures()],
+            fontFeatures: [FontFeature.tabularFigures()],
           ),
         ),
       ],
     );
   }
+}
 
-  Widget _buildActionButton({
-    required String label,
-    required VoidCallback onPressed,
-    required Color color,
-    Color textColor = NeonPalette.text,
-    IconData? icon,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: textColor,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 18),
-              const SizedBox(width: 8),
-            ],
-            Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 13,
-                letterSpacing: 1,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+class _ActionButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+  final bool filled;
+  final IconData? icon;
 
-  Widget _buildOutlineButton({
-    required String label,
-    required VoidCallback onPressed,
-    required IconData icon,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: NeonPalette.text,
-          side: const BorderSide(color: NeonPalette.border),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 18, color: NeonPalette.textMuted),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                letterSpacing: 1,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  const _ActionButton({
+    required this.label,
+    required this.onPressed,
+    this.filled = false,
+    this.icon,
+  });
 
   @override
-  void dispose() {
-    _updateTimer?.cancel();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    super.dispose();
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: filled
+          ? ElevatedButton(
+              onPressed: onPressed,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 16),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : OutlinedButton(
+              onPressed: onPressed,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: NeonPalette.text,
+                side: const BorderSide(color: NeonPalette.border, width: 0.5),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 16, color: NeonPalette.textMuted),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
   }
 }

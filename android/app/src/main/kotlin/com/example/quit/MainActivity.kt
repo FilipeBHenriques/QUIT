@@ -29,9 +29,6 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        // Check and request permissions on startup
-        checkAndRequestPermissions()
-
         // Monitoring channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MONITORING_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -60,6 +57,55 @@ class MainActivity : FlutterActivity() {
                     Log.d(TAG, "⏱️ Updating timer config: $dailyLimitSeconds seconds")
                     updateTimerConfig(dailyLimitSeconds)
                     result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.quit.app/permissions").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "checkAll" -> result.success(mapOf(
+                    "usageStats" to checkUsageStatsPermission(),
+                    "accessibility" to isAccessibilityServiceEnabled(),
+                    "overlay" to checkOverlayPermission(),
+                    "battery" to checkBatteryOptimization(),
+                ))
+                "openUsageStats" -> {
+                    try { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) } catch (e: Exception) {}
+                    result.success(null)
+                }
+                "openAccessibility" -> {
+                    try { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (e: Exception) {}
+                    result.success(null)
+                }
+                "openOverlay" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        try { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) } catch (e: Exception) {}
+                    }
+                    result.success(null)
+                }
+                "openBattery" -> {
+                    var opened = false
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        // Try the direct per-app dialog (requires REQUEST_IGNORE_BATTERY_OPTIMIZATIONS permission)
+                        try {
+                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                            intent.data = Uri.parse("package:$packageName")
+                            startActivity(intent)
+                            opened = true
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Direct battery dialog failed: ${e.message}")
+                        }
+                    }
+                    if (!opened) {
+                        // Fallback: open the battery optimization list (works on all devices)
+                        try {
+                            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Battery optimization settings failed: ${e.message}")
+                        }
+                    }
+                    result.success(null)
                 }
                 else -> result.notImplemented()
             }

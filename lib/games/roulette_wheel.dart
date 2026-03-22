@@ -3,10 +3,6 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 import 'roulette_constants.dart';
 
-// ============================================================================
-// ENHANCED ROULETTE WHEEL COMPONENT
-// ============================================================================
-
 class RouletteWheel extends PositionComponent {
   double rotation = 0;
   bool isSpinning = false;
@@ -14,7 +10,6 @@ class RouletteWheel extends PositionComponent {
 
   final VoidCallback? onSpinComplete;
 
-  // Visual enhancements
   double glowIntensity = 0.0;
   final List<double> segmentHighlights = List.filled(37, 0.0);
 
@@ -28,14 +23,10 @@ class RouletteWheel extends PositionComponent {
   @override
   void update(double dt) {
     super.update(dt);
-
     if (!isSpinning) {
-      // Idle glow effect
       glowIntensity =
-          0.2 + (sin(DateTime.now().millisecondsSinceEpoch / 1000) * 0.1);
+          0.15 + (sin(DateTime.now().millisecondsSinceEpoch / 1200) * 0.08);
     }
-
-    // Decay segment highlights
     for (int i = 0; i < segmentHighlights.length; i++) {
       if (segmentHighlights[i] > 0) {
         segmentHighlights[i] = max(0, segmentHighlights[i] - dt * 2);
@@ -47,15 +38,9 @@ class RouletteWheel extends PositionComponent {
     isSpinning = true;
     winningNumber = targetNumber;
 
-    // Calculate exact target rotation
     final targetIndex = RouletteNumbers.wheelOrder.indexOf(targetNumber);
     final singlePocketAngle = (2 * pi) / RouletteConstants.totalNumbers;
-
-    // Point the pocket to the top (where the arrow is)
-    // We need to rotate so the target pocket is at angle 0 (top of wheel)
     final targetAngle = -targetIndex * singlePocketAngle;
-
-    // Add multiple full rotations for spinning effect
     final totalRotation =
         targetAngle + (RouletteConstants.ballRevolutions * 2 * pi);
 
@@ -63,40 +48,35 @@ class RouletteWheel extends PositionComponent {
   }
 
   void _animateSpin(double targetRotation) {
-    final duration = 5000.0; // Fixed 5 seconds for smooth animation
-
+    const duration = 5000.0;
     final startRotation = rotation;
     final startTime = DateTime.now();
 
     void animate() {
-      if (!isSpinning) return; // Safety check
+      if (!isSpinning) return;
 
       final elapsed = DateTime.now().difference(startTime).inMilliseconds;
       final progress = (elapsed / duration).clamp(0.0, 1.0);
 
-      // Smooth easing with gradual slowdown
       final eased = progress < 0.8
           ? progress
           : 0.8 + (1 - pow(1 - (progress - 0.8) / 0.2, 3)) * 0.2;
 
       rotation = startRotation + (targetRotation * eased);
-
-      // Update glow intensity based on speed
       glowIntensity = 1.0 - progress;
 
       if (progress < 1.0) {
         Future.delayed(const Duration(milliseconds: 16), () => animate());
       } else {
-        rotation = targetRotation % (2 * pi); // Normalize rotation
+        rotation = targetRotation % (2 * pi);
         isSpinning = false;
-
-        // Highlight winning segment
-        final winningIndex = RouletteNumbers.wheelOrder.indexOf(winningNumber!);
+        final winningIndex =
+            RouletteNumbers.wheelOrder.indexOf(winningNumber!);
         segmentHighlights[winningIndex] = 1.0;
-
-        Future.delayed(const Duration(milliseconds: 300), () {
-          onSpinComplete?.call();
-        });
+        Future.delayed(
+          const Duration(milliseconds: 300),
+          () => onSpinComplete?.call(),
+        );
       }
     }
 
@@ -109,86 +89,71 @@ class RouletteWheel extends PositionComponent {
 
     final center = Offset(size.x / 2, size.y / 2);
 
-    // Draw layered shadows for depth
     _drawShadows(canvas, center);
-
-    // Draw outer rim with metallic effect
     _drawOuterRim(canvas, center);
-
-    // Draw inner rim
     _drawInnerRim(canvas, center);
 
-    // Rotate canvas for wheel
     canvas.translate(center.dx, center.dy);
     canvas.rotate(rotation);
     canvas.translate(-center.dx, -center.dy);
 
-    // Draw wheel pockets
     _drawWheelPockets(canvas, center);
-
-    // Draw center hub
     _drawCenterHub(canvas, center);
 
     canvas.restore();
 
-    // Draw static elements (non-rotating)
     _drawPointer(canvas, center);
     _drawGlowEffect(canvas, center);
   }
 
   void _drawShadows(Canvas canvas, Offset center) {
-    // Single shadow layer
     canvas.drawCircle(
-      Offset(center.dx + 4, center.dy + 4),
+      Offset(center.dx + 4, center.dy + 6),
       RouletteConstants.wheelRadius + 5,
       Paint()
-        ..color = Colors.black.withOpacity(0.4)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+        ..color = Colors.black.withValues(alpha: 0.5)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
     );
-
+    // Neon rose outer glow
     canvas.drawCircle(
       center,
-      RouletteConstants.wheelRadius + 12,
+      RouletteConstants.wheelRadius + 14,
       Paint()
-        ..color = const Color(0xFFEF4444).withOpacity(0.12)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20),
+        ..color = const Color(0xFFFF1A5C).withValues(alpha: 0.08)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22),
     );
   }
 
   void _drawOuterRim(Canvas canvas, Offset center) {
     final rimRadius = RouletteConstants.wheelRadius + 6;
 
-    // Outer rim - deep metal
     canvas.drawCircle(
       center,
       rimRadius,
       Paint()
         ..shader = const LinearGradient(
-          colors: [Color(0xFF2A2F38), Color(0xFF111318)],
+          colors: [Color(0xFF1C1E28), Color(0xFF0A0B12)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ).createShader(Rect.fromCircle(center: center, radius: rimRadius)),
     );
 
-    // Accent highlight ring
+    // Rose accent ring
     canvas.drawCircle(
       center,
       rimRadius,
       Paint()
-        ..color = const Color(0xFFEF4444).withOpacity(0.5)
+        ..color = const Color(0xFFFF1A5C).withValues(alpha: 0.45)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
+        ..strokeWidth = 1.0,
     );
   }
 
   void _drawInnerRim(Canvas canvas, Offset center) {
-    final innerRimRadius = RouletteConstants.wheelRadius + 2;
-
-    // Dark inner rim
     canvas.drawCircle(
       center,
-      innerRimRadius,
-      Paint()..color = const Color(0xFF090B0F),
+      RouletteConstants.wheelRadius + 2,
+      Paint()..color = const Color(0xFF060810),
     );
   }
 
@@ -198,14 +163,8 @@ class RouletteWheel extends PositionComponent {
     for (int i = 0; i < RouletteConstants.totalNumbers; i++) {
       final number = RouletteNumbers.wheelOrder[i];
       final startAngle = (i * pocketAngle) - (pi / 2);
-
-      // Draw pocket with depth
       _drawPocket(canvas, center, startAngle, pocketAngle, number, i);
-
-      // Draw separator lines
       _drawSeparator(canvas, center, startAngle + pocketAngle);
-
-      // Draw number
       _drawNumber(canvas, center, startAngle + pocketAngle / 2, number);
     }
   }
@@ -221,7 +180,6 @@ class RouletteWheel extends PositionComponent {
     final baseColor = RouletteNumbers.getNumberColor(number);
     final highlight = segmentHighlights[index];
 
-    // Main pocket
     final outerPath = Path()
       ..moveTo(center.dx, center.dy)
       ..arcTo(
@@ -232,9 +190,8 @@ class RouletteWheel extends PositionComponent {
       )
       ..close();
 
-    // Apply highlight if winning number
     final pocketColor = highlight > 0
-        ? Color.lerp(baseColor, const Color(0xFFEF4444), highlight * 0.35)!
+        ? Color.lerp(baseColor, const Color(0xFFFF1A5C), highlight * 0.40)!
         : baseColor;
 
     canvas.drawPath(outerPath, Paint()..color = pocketColor);
@@ -244,17 +201,18 @@ class RouletteWheel extends PositionComponent {
     final innerRadius = RouletteConstants.wheelRadius * 0.3;
     final outerRadius = RouletteConstants.wheelRadius;
 
-    final x1 = center.dx + cos(angle) * innerRadius;
-    final y1 = center.dy + sin(angle) * innerRadius;
-    final x2 = center.dx + cos(angle) * outerRadius;
-    final y2 = center.dy + sin(angle) * outerRadius;
-
     canvas.drawLine(
-      Offset(x1, y1),
-      Offset(x2, y2),
+      Offset(
+        center.dx + cos(angle) * innerRadius,
+        center.dy + sin(angle) * innerRadius,
+      ),
+      Offset(
+        center.dx + cos(angle) * outerRadius,
+        center.dy + sin(angle) * outerRadius,
+      ),
       Paint()
-        ..color = Colors.white.withOpacity(0.15)
-        ..strokeWidth = 1.5,
+        ..color = Colors.white.withValues(alpha: 0.12)
+        ..strokeWidth = 1.2,
     );
   }
 
@@ -272,7 +230,7 @@ class RouletteWheel extends PositionComponent {
           fontWeight: FontWeight.w700,
           shadows: [
             Shadow(
-              color: Colors.black.withOpacity(0.55),
+              color: Colors.black.withValues(alpha: 0.6),
               offset: const Offset(0.5, 0.5),
               blurRadius: 1,
             ),
@@ -284,7 +242,6 @@ class RouletteWheel extends PositionComponent {
 
     canvas.save();
     canvas.translate(textX, textY);
-    // Keep number labels upright while the wheel spins.
     canvas.rotate(-rotation);
     textPainter.paint(
       canvas,
@@ -296,80 +253,73 @@ class RouletteWheel extends PositionComponent {
   void _drawCenterHub(Canvas canvas, Offset center) {
     final hubRadius = RouletteConstants.wheelRadius * 0.2;
 
-    // Outer ring
     canvas.drawCircle(
       center,
       hubRadius + 3,
-      Paint()..color = Colors.white.withOpacity(0.2),
+      Paint()..color = Colors.white.withValues(alpha: 0.15),
     );
 
-    // Inner hub
     canvas.drawCircle(
       center,
       hubRadius,
       Paint()
         ..shader = const RadialGradient(
-          colors: [Color(0xFF1F2937), Color(0xFF0A0A0A)],
+          colors: [Color(0xFF16182A), Color(0xFF060810)],
         ).createShader(Rect.fromCircle(center: center, radius: hubRadius)),
     );
 
-    // Center accent
+    // Rose center dot
     canvas.drawCircle(
       center,
       hubRadius * 0.35,
-      Paint()..color = const Color(0xFFEF4444),
+      Paint()..color = const Color(0xFFFF1A5C),
+    );
+
+    // Inner glow
+    canvas.drawCircle(
+      center,
+      hubRadius * 0.35,
+      Paint()
+        ..color = const Color(0xFFFF1A5C).withValues(alpha: 0.55)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
   }
 
   void _drawPointer(Canvas canvas, Offset center) {
-    final pointerSize = 28.0;
-    final pointerY = center.dy - RouletteConstants.wheelRadius - 18;
+    const pointerSize = 22.0;
+    final pointerY = center.dy - RouletteConstants.wheelRadius - 14;
 
-    // Pointer shadow
-    final shadowPath = Path()
-      ..moveTo(center.dx, pointerY + pointerSize + 2)
-      ..lineTo(center.dx - pointerSize / 2, pointerY + 2)
-      ..lineTo(center.dx + pointerSize / 2, pointerY + 2)
-      ..close();
-
+    // Shadow
     canvas.drawPath(
-      shadowPath,
+      Path()
+        ..moveTo(center.dx, pointerY + pointerSize + 2)
+        ..lineTo(center.dx - pointerSize / 2, pointerY + 2)
+        ..lineTo(center.dx + pointerSize / 2, pointerY + 2)
+        ..close(),
       Paint()
-        ..color = Colors.black.withOpacity(0.4)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+        ..color = Colors.black.withValues(alpha: 0.45)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
     );
 
-    // Main pointer path
-    final path = Path()
-      ..moveTo(center.dx, pointerY + pointerSize) // Point
-      ..lineTo(center.dx - pointerSize / 2, pointerY) // Top left
-      ..lineTo(center.dx + pointerSize / 2, pointerY) // Top right
-      ..close();
-
-    // White fill
-    canvas.drawPath(path, Paint()..color = Colors.white);
-
-    // Border
+    // White pointer
     canvas.drawPath(
-      path,
-      Paint()
-        ..color = Colors.white.withOpacity(0.6)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
+      Path()
+        ..moveTo(center.dx, pointerY + pointerSize)
+        ..lineTo(center.dx - pointerSize / 2, pointerY)
+        ..lineTo(center.dx + pointerSize / 2, pointerY)
+        ..close(),
+      Paint()..color = Colors.white,
     );
   }
 
   void _drawGlowEffect(Canvas canvas, Offset center) {
-    if (glowIntensity > 0.05) {
-      final glowRadius = RouletteConstants.wheelRadius + 20;
-
-      // Subtle white underglow
+    if (glowIntensity > 0.04) {
       canvas.drawCircle(
         center,
-        glowRadius,
+        RouletteConstants.wheelRadius + 18,
         Paint()
-          ..color = Colors.white.withOpacity(glowIntensity * 0.15)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 25),
+          ..color = const Color(0xFFFF1A5C).withValues(alpha: glowIntensity * 0.12)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 28),
       );
     }
   }
@@ -380,7 +330,6 @@ class RouletteWheel extends PositionComponent {
     final pocketIndex =
         ((normalizedRotation + (pi / 2)) / pocketAngle).round() %
         RouletteConstants.totalNumbers;
-
     return RouletteNumbers.wheelOrder[pocketIndex];
   }
 }

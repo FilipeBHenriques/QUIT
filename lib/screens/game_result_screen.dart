@@ -29,7 +29,7 @@ class _GameResultScreenState extends State<GameResultScreen>
   late AnimationController _scaleController;
   late AnimationController _numberController;
   late Animation<double> _scaleAnimation;
-  Animation<int>? _numberAnimation; // Nullable until initialized
+  Animation<int>? _numberAnimation;
 
   int initialTime = 0;
   int finalTime = 0;
@@ -44,68 +44,49 @@ class _GameResultScreenState extends State<GameResultScreen>
   }
 
   void _initializeAnimations() {
-    // Scale animation for the result text
     _scaleController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 700),
       vsync: this,
     );
-
     _scaleAnimation = CurvedAnimation(
       parent: _scaleController,
       curve: Curves.elasticOut,
     );
-
-    // Number counter animation
     _numberController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
+      duration: const Duration(milliseconds: 1800),
       vsync: this,
     );
-
     _scaleController.forward();
   }
 
   Future<void> _loadTimeData() async {
     final prefs = await SharedPreferences.getInstance();
-
-    // Get current remaining time
     final currentRemaining = prefs.getInt('remaining_seconds') ?? 0;
     initialTime = currentRemaining;
 
-    // Calculate new time after applying result
-    final newRemaining = math.max(
-      0,
-      currentRemaining + widget.result.timeChange,
-    );
+    final newRemaining = math.max(0, currentRemaining + widget.result.timeChange);
     finalTime = newRemaining;
     hasTime = finalTime > 0;
 
-    // Save the new time
     await prefs.setInt('remaining_seconds', finalTime);
 
-    // Also update used_today counter
     if (widget.result.timeChange < 0) {
-      // Lost time - add to used counter
       final currentUsed = prefs.getInt('used_today_seconds') ?? 0;
       await prefs.setInt(
         'used_today_seconds',
         currentUsed + widget.result.timeChange.abs(),
       );
     } else {
-      // Won time - subtract from used counter (if possible)
       final currentUsed = prefs.getInt('used_today_seconds') ?? 0;
       final newUsed = math.max(0, currentUsed - widget.result.timeChange);
       await prefs.setInt('used_today_seconds', newUsed);
     }
 
-    // Start the number animation
     _numberAnimation = IntTween(begin: initialTime, end: finalTime).animate(
       CurvedAnimation(parent: _numberController, curve: Curves.easeOutCubic),
     );
 
-    setState(() {
-      _isLoaded = true;
-    });
-
+    setState(() => _isLoaded = true);
     _numberController.forward();
   }
 
@@ -117,9 +98,7 @@ class _GameResultScreenState extends State<GameResultScreen>
 
   Future<void> _continue() async {
     if (hasTime) {
-      // Has time - launch the app
       try {
-        // Start the reset timer countdown (if not already started)
         final prefs = await SharedPreferences.getInstance();
         final lastReset = prefs.getInt('timer_last_reset') ?? 0;
         if (lastReset == 0) {
@@ -129,20 +108,15 @@ class _GameResultScreenState extends State<GameResultScreen>
           );
         }
         await prefs.setBool('timer_first_choice_made', true);
-
         await navigationChannel.invokeMethod('launchApp', {
           'packageName': widget.packageName,
         });
-      } catch (e) {
-        print('❌ Error launching app: $e');
+      } catch (_) {
         await navigationChannel.invokeMethod('goHome');
       }
     } else {
-      // No time - start the 24h countdown so it resets tomorrow
       try {
         final prefs = await SharedPreferences.getInstance();
-
-        // If timer hasn't started yet, start it now (so it resets in 24h)
         final lastReset = prefs.getInt('timer_last_reset') ?? 0;
         if (lastReset == 0) {
           await prefs.setInt(
@@ -150,12 +124,9 @@ class _GameResultScreenState extends State<GameResultScreen>
             DateTime.now().millisecondsSinceEpoch,
           );
           await prefs.setBool('timer_first_choice_made', true);
-          print('⏰ Started 24h countdown - will reset tomorrow');
         }
-
         await navigationChannel.invokeMethod('goHome');
-      } catch (e) {
-        print('❌ Error going home: $e');
+      } catch (_) {
         await navigationChannel.invokeMethod('goHome');
       }
     }
@@ -172,9 +143,6 @@ class _GameResultScreenState extends State<GameResultScreen>
   Widget build(BuildContext context) {
     final isWin = widget.result.won;
     final primaryColor = isWin ? NeonPalette.mint : NeonPalette.rose;
-    final secondaryColor = isWin
-        ? const Color(0xFF065F46)
-        : const Color(0xFF7F1D1D);
     final headline = isWin ? 'YOU WON' : 'YOU LOST';
     final subhead = isWin
         ? 'Nice play. Time added to your balance.'
@@ -184,84 +152,125 @@ class _GameResultScreenState extends State<GameResultScreen>
       backgroundColor: NeonPalette.bg,
       body: SafeArea(
         child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // Close
                 Align(
                   alignment: Alignment.centerRight,
-                  child: IconButton(
-                    icon: const Icon(
-                      Icons.close,
-                      color: NeonPalette.textMuted,
-                      size: 20,
+                  child: GestureDetector(
+                    onTap: () async =>
+                        navigationChannel.invokeMethod('goHome'),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: NeonPalette.surfaceSoft,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: NeonPalette.border,
+                          width: 0.5,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        color: NeonPalette.textMuted,
+                        size: 14,
+                      ),
                     ),
-                    onPressed: () async {
-                      await navigationChannel.invokeMethod('goHome');
-                    },
                   ),
                 ),
+
+                const SizedBox(height: 32),
+
+                // Result icon
                 Container(
-                  width: 64,
-                  height: 64,
+                  width: 72,
+                  height: 72,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: primaryColor.withOpacity(0.16),
-                    border: Border.all(color: primaryColor.withOpacity(0.45)),
+                    color: primaryColor.withValues(alpha: 0.08),
+                    border: Border.all(
+                      color: primaryColor.withValues(alpha: 0.35),
+                      width: 0.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: primaryColor.withValues(alpha: 0.22),
+                        blurRadius: 28,
+                        spreadRadius: 0,
+                      ),
+                      BoxShadow(
+                        color: primaryColor.withValues(alpha: 0.08),
+                        blurRadius: 60,
+                        spreadRadius: 8,
+                      ),
+                    ],
                   ),
                   child: Icon(
                     isWin ? Icons.check_rounded : Icons.close_rounded,
                     color: primaryColor,
-                    size: 34,
+                    size: 32,
                   ),
                 ),
-                const SizedBox(height: 14),
-                // Result text with scale animation
+
+                const SizedBox(height: 20),
+
+                // Headline
                 ScaleTransition(
                   scale: _scaleAnimation,
                   child: Text(
                     headline,
                     style: TextStyle(
                       color: primaryColor,
-                      fontSize: 44,
+                      fontSize: 48,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: 2,
+                      letterSpacing: 3,
                       shadows: [
                         Shadow(
-                          color: primaryColor.withOpacity(0.8),
-                          offset: Offset.zero,
+                          color: primaryColor.withValues(alpha: 0.7),
                           blurRadius: 30,
                         ),
                       ],
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 8),
+
                 Text(
                   subhead,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: NeonPalette.textMuted,
                     fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
 
                 const SizedBox(height: 40),
 
-                // Time change display
+                // Time change card
                 Container(
-                  padding: const EdgeInsets.all(32),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 28,
+                    horizontal: 24,
+                  ),
                   decoration: BoxDecoration(
-                    color: secondaryColor.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: primaryColor, width: 2),
+                    color: primaryColor.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: primaryColor.withValues(alpha: 0.22),
+                      width: 0.5,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: primaryColor.withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
+                        color: primaryColor.withValues(alpha: 0.12),
+                        blurRadius: 24,
+                        spreadRadius: 0,
                       ),
                     ],
                   ),
@@ -269,131 +278,122 @@ class _GameResultScreenState extends State<GameResultScreen>
                     children: [
                       Text(
                         isWin ? 'TIME GAINED' : 'TIME LOST',
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: NeonPalette.textMuted,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w300,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: 3,
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       Text(
                         widget.result.timeChangeFormattedMinutes,
                         style: TextStyle(
                           color: primaryColor,
-                          fontSize: 58,
+                          fontSize: 62,
                           fontWeight: FontWeight.w900,
-                          letterSpacing: 2,
+                          letterSpacing: 1,
+                          shadows: [
+                            Shadow(
+                              color: primaryColor.withValues(alpha: 0.65),
+                              blurRadius: 24,
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
 
-                const SizedBox(height: 40),
+                const SizedBox(height: 20),
 
-                // Animated time remaining counter
-                _isLoaded && _numberAnimation != null
-                    ? AnimatedBuilder(
-                        animation: _numberAnimation!,
-                        builder: (context, child) {
-                          return Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.05),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  'TIME REMAINING',
-                                  style: TextStyle(
-                                    color: NeonPalette.textMuted,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w300,
-                                    letterSpacing: 2,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _formatTime(_numberAnimation!.value),
-                                  style: TextStyle(
-                                    color: hasTime
-                                        ? NeonPalette.text
-                                        : NeonPalette.rose,
-                                    fontSize: 40,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 2,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              'TIME REMAINING',
-                              style: TextStyle(
-                                color: NeonPalette.textMuted,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w300,
-                                letterSpacing: 2,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            const SizedBox(
-                              height: 40,
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  color: NeonPalette.text,
-                                ),
-                              ),
-                            ),
-                          ],
+                // Time remaining counter
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 20,
+                    horizontal: 24,
+                  ),
+                  decoration: BoxDecoration(
+                    color: NeonPalette.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: NeonPalette.border,
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'TIME REMAINING',
+                        style: TextStyle(
+                          color: NeonPalette.textMuted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 3,
                         ),
                       ),
-
-                const SizedBox(height: 60),
-
-                // Continue button
-                SizedBox(
-                  width: double.infinity,
-                  child: NeonButton(
-                    onPressed: _continue,
-                    color: NeonPalette.surfaceSoft,
-                    borderColor: hasTime
-                        ? const Color(0xFFCBD5E1)
-                        : NeonPalette.border,
-                    glowColor: Colors.white,
-                    textColor: Colors.white,
-                    glowOpacity: hasTime ? 0.16 : 0.0,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    borderRadius: 22,
-                    fontSize: 16,
-                    letterSpacing: 1.0,
-                    text: hasTime ? 'CONTINUE TO APP' : 'GO HOME',
+                      const SizedBox(height: 10),
+                      _isLoaded && _numberAnimation != null
+                          ? AnimatedBuilder(
+                              animation: _numberAnimation!,
+                              builder: (context, _) => Text(
+                                _formatTime(_numberAnimation!.value),
+                                style: TextStyle(
+                                  color: hasTime
+                                      ? NeonPalette.text
+                                      : NeonPalette.rose,
+                                  fontSize: 42,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : const SizedBox(
+                              height: 42,
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: NeonPalette.textMuted,
+                                  strokeWidth: 1.5,
+                                ),
+                              ),
+                            ),
+                    ],
                   ),
                 ),
 
+                const SizedBox(height: 40),
+
+                NeonButton(
+                  onPressed: _continue,
+                  color: NeonPalette.surfaceSoft,
+                  borderColor: const Color(0xFF2A2E3F),
+                  glowColor: Colors.white,
+                  textColor: Colors.white,
+                  glowOpacity: hasTime ? 0.10 : 0.0,
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  borderRadius: 14,
+                  fontSize: 13,
+                  letterSpacing: 2.0,
+                  text: hasTime ? 'CONTINUE TO APP' : 'GO HOME',
+                ),
+
                 if (!hasTime) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    'No time remaining. Try again tomorrow!',
+                  const SizedBox(height: 14),
+                  const Text(
+                    'No time remaining. Try again tomorrow.',
                     style: TextStyle(
                       color: NeonPalette.textMuted,
-                      fontSize: 14,
+                      fontSize: 13,
                     ),
                     textAlign: TextAlign.center,
                   ),
                 ],
+
+                const SizedBox(height: 24),
               ],
             ),
           ),

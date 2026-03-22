@@ -22,7 +22,6 @@ class _MinesScreenState extends State<MinesScreen>
   int remainingTime = 0;
   bool isLoaded = false;
 
-  // Current game stats
   int diamondsFound = 0;
   double currentMultiplier = 1.0;
   int potentialWin = 0;
@@ -31,11 +30,6 @@ class _MinesScreenState extends State<MinesScreen>
   void initState() {
     super.initState();
     _loadRemainingTime();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 
   Future<void> _loadRemainingTime() async {
@@ -53,7 +47,6 @@ class _MinesScreenState extends State<MinesScreen>
       onGameComplete: _onGameComplete,
     );
 
-    // Listen to stats updates
     _game.statsStream.listen((stats) {
       if (mounted) {
         setState(() {
@@ -69,9 +62,7 @@ class _MinesScreenState extends State<MinesScreen>
     Navigator.pop(context, result);
   }
 
-  void _cashOut() {
-    _game.cashOut();
-  }
+  void _cashOut() => _game.cashOut();
 
   void _reset() {
     _game.resetGame();
@@ -87,7 +78,12 @@ class _MinesScreenState extends State<MinesScreen>
     if (!isLoaded) {
       return const Scaffold(
         backgroundColor: NeonPalette.bg,
-        body: Center(child: CircularProgressIndicator(color: NeonPalette.text)),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: NeonPalette.cyan,
+            strokeWidth: 1.5,
+          ),
+        ),
       );
     }
 
@@ -114,53 +110,44 @@ class _MinesScreenState extends State<MinesScreen>
     final canReset = _game.isGameOver;
 
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.75),
+            color: NeonPalette.bg.withValues(alpha: 0.90),
             border: Border(
-              top: BorderSide(color: NeonPalette.border, width: 1),
+              top: BorderSide(color: NeonPalette.border, width: 0.5),
             ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Stats row
               _buildStatsRow(),
-
-              const SizedBox(height: 16),
-
-              // Action buttons
+              const SizedBox(height: 14),
               Row(
                 children: [
-                  // Reset button (only show when game over)
                   if (canReset) Expanded(child: _buildResetButton()),
-
-                  // Cash out button (only show when diamonds found and game not over)
                   if (canCashOut) ...[
-                    if (canReset) const SizedBox(width: 16),
+                    if (canReset) const SizedBox(width: 12),
                     Expanded(
                       flex: canReset ? 1 : 2,
                       child: _buildCashOutButton(),
                     ),
                   ],
-
-                  // Show placeholder if no buttons
                   if (!canCashOut && !canReset)
                     Expanded(
                       child: Container(
-                        height: 56,
+                        height: 52,
                         alignment: Alignment.center,
-                        child: Text(
-                          'REVEAL TILES TO START',
+                        child: const Text(
+                          'REVEAL TILES TO BEGIN',
                           style: TextStyle(
-                            color: NeonPalette.textMuted.withOpacity(0.6),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w300,
-                            letterSpacing: 2,
+                            color: NeonPalette.textMuted,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 2.5,
                           ),
                         ),
                       ),
@@ -176,46 +163,26 @@ class _MinesScreenState extends State<MinesScreen>
 
   Widget _buildStatsRow() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _buildStatItem(
-          label: MinesConstants.diamondsFoundLabel,
-          value: '$diamondsFound/${MinesConstants.diamondCount}',
-          color: NeonPalette.text,
-        ),
-        _buildStatItem(
-          label: MinesConstants.multiplierLabel,
-          value: MinesConstants.formatMultiplier(currentMultiplier),
-          color: NeonPalette.text,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatItem({
-    required String label,
-    required String value,
-    required Color color,
-  }) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: NeonPalette.textMuted.withOpacity(0.6),
-            fontSize: 10,
-            fontWeight: FontWeight.w300,
-            letterSpacing: 2,
+        Expanded(
+          child: _StatChip(
+            label: MinesConstants.diamondsFoundLabel,
+            value: '$diamondsFound/${MinesConstants.diamondCount}',
+            color: diamondsFound > 0 ? NeonPalette.cyan : NeonPalette.textMuted,
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1,
+        Container(
+          width: 0.5,
+          height: 36,
+          color: NeonPalette.border,
+        ),
+        Expanded(
+          child: _StatChip(
+            label: MinesConstants.multiplierLabel,
+            value: MinesConstants.formatMultiplier(currentMultiplier),
+            color: currentMultiplier > 1.0
+                ? NeonPalette.mint
+                : NeonPalette.textMuted,
           ),
         ),
       ],
@@ -225,31 +192,79 @@ class _MinesScreenState extends State<MinesScreen>
   Widget _buildCashOutButton() {
     return NeonButton(
       onPressed: _cashOut,
-      color: NeonPalette.surfaceSoft,
-      textColor: Colors.white,
-      borderColor: NeonPalette.border,
-      glowOpacity: 0.0,
-      padding: const EdgeInsets.symmetric(vertical: 18),
-      borderRadius: 20,
-      fontSize: 14,
-      letterSpacing: 0.8,
-      text:
-          '${MinesConstants.cashOutButton}  ${MinesConstants.formatTime(potentialWin)}',
+      color: NeonPalette.cyan.withValues(alpha: 0.07),
+      textColor: NeonPalette.cyan,
+      borderColor: NeonPalette.cyan.withValues(alpha: 0.35),
+      glowColor: NeonPalette.cyan,
+      glowOpacity: 0.22,
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      borderRadius: 12,
+      fontSize: 13,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 1.5,
+      text: '${MinesConstants.cashOutButton}  ${MinesConstants.formatTime(potentialWin)}',
     );
   }
 
   Widget _buildResetButton() {
     return NeonButton(
       onPressed: _reset,
-      color: NeonPalette.surfaceSoft,
-      textColor: Colors.white,
+      color: Colors.transparent,
+      textColor: NeonPalette.textMuted,
       borderColor: NeonPalette.border,
       glowOpacity: 0.0,
-      padding: const EdgeInsets.symmetric(vertical: 18),
-      borderRadius: 20,
-      fontSize: 14,
-      letterSpacing: 0.8,
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      borderRadius: 12,
+      fontSize: 13,
+      letterSpacing: 1.5,
       text: MinesConstants.resetButton,
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _StatChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: NeonPalette.textMuted,
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.5,
+            shadows: color != NeonPalette.textMuted
+                ? [
+                    Shadow(
+                      color: color.withValues(alpha: 0.55),
+                      blurRadius: 12,
+                    ),
+                  ]
+                : null,
+          ),
+        ),
+      ],
     );
   }
 }

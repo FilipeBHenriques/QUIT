@@ -15,58 +15,115 @@ class GameHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    return Container(
+      decoration: BoxDecoration(
+        color: NeonPalette.bg,
+        border: Border(
+          bottom: BorderSide(color: NeonPalette.border, width: 0.5),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Row(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.7),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: NeonPalette.border),
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.arrow_back, color: NeonPalette.text),
-              onPressed: onBack,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
+          // Back button — minimal square
+          GestureDetector(
+            onTap: onBack,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.75),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: NeonPalette.border),
+                color: NeonPalette.surfaceSoft,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: NeonPalette.border, width: 0.5),
               ),
-              child: Column(
-                children: [
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 3,
-                      color: NeonPalette.text,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'BETTING: $bettingTime',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Color(0xFFE5E7EB),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ],
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: NeonPalette.textMuted,
+                size: 14,
               ),
             ),
           ),
-          const SizedBox(width: 48),
+
+          const SizedBox(width: 16),
+
+          // Title
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 5,
+                    color: NeonPalette.text,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                // Bet badge
+                _BettingBadge(time: bettingTime),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 38),
+        ],
+      ),
+    );
+  }
+}
+
+class _BettingBadge extends StatelessWidget {
+  final String time;
+  const _BettingBadge({required this.time});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: NeonPalette.rose.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: NeonPalette.rose.withValues(alpha: 0.25),
+          width: 0.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: NeonPalette.rose.withValues(alpha: 0.10),
+            blurRadius: 10,
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 4,
+            height: 4,
+            decoration: BoxDecoration(
+              color: NeonPalette.rose,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: NeonPalette.rose.withValues(alpha: 0.8),
+                  blurRadius: 5,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'BETTING  $time',
+            style: TextStyle(
+              color: NeonPalette.rose.withValues(alpha: 0.85),
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.5,
+            ),
+          ),
         ],
       ),
     );

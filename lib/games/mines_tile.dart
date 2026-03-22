@@ -5,10 +5,6 @@ import 'dart:math' as math;
 import 'mines_constants.dart' show MinesConstants, TileState, TileType;
 import 'package:quit/theme/game_icons.dart';
 
-// ============================================================================
-// MINES TILE COMPONENT
-// ============================================================================
-
 class MinesTile extends PositionComponent with TapCallbacks {
   final int row;
   final int col;
@@ -18,10 +14,16 @@ class MinesTile extends PositionComponent with TapCallbacks {
 
   TileState state = TileState.hidden;
 
-  // Animation properties
   double _revealProgress = 0.0;
   double _pulsePhase = 0.0;
   bool _isHovered = false;
+
+  // Neon palette constants
+  static const Color _diamondColor = Color(0xFF00F0FF); // electric cyan
+  static const Color _bombColor = Color(0xFFFF1A5C);    // neon rose
+  static const Color _tileBg = Color(0xFF0A0C14);
+  static const Color _tileBgHover = Color(0xFF0F111C);
+  static const Color _tileBorder = Color(0xFF1C1E2A);
 
   MinesTile({
     required this.row,
@@ -39,18 +41,12 @@ class MinesTile extends PositionComponent with TapCallbacks {
   @override
   void update(double dt) {
     super.update(dt);
-
-    // Animate reveal
     if (state == TileState.revealed && _revealProgress < 1.0) {
-      _revealProgress = math.min(1.0, _revealProgress + dt * 3.0);
+      _revealProgress = math.min(1.0, _revealProgress + dt * 3.2);
     }
-
-    // Pulse animation for revealed diamonds
     if (state == TileState.revealed && type == TileType.diamond) {
-      _pulsePhase += dt * 2.0;
+      _pulsePhase += dt * 2.2;
     }
-
-    // Explosion animation for bombs
     if (state == TileState.exploding && _revealProgress < 1.0) {
       _revealProgress = math.min(1.0, _revealProgress + dt * 4.0);
     }
@@ -59,57 +55,50 @@ class MinesTile extends PositionComponent with TapCallbacks {
   @override
   void render(Canvas canvas) {
     super.render(canvas);
-
     final rect = RRect.fromRectAndRadius(
       Rect.fromLTWH(0, 0, size.x, size.y),
-      Radius.circular(MinesConstants.tileBorderRadius),
+      const Radius.circular(8),
     );
 
-    if (state == TileState.hidden) {
-      _renderHiddenTile(canvas, rect);
-    } else if (state == TileState.revealed) {
-      _renderRevealedTile(canvas, rect);
-    } else if (state == TileState.exploding) {
-      _renderExplodingTile(canvas, rect);
+    switch (state) {
+      case TileState.hidden:
+        _renderHiddenTile(canvas, rect);
+      case TileState.revealed:
+        _renderRevealedTile(canvas, rect);
+      case TileState.exploding:
+        _renderExplodingTile(canvas, rect);
     }
   }
 
   void _renderHiddenTile(Canvas canvas, RRect rect) {
     // Background
-    final bgColor = _isHovered
-        ? MinesConstants.tileHoverColor
-        : MinesConstants.tileColor;
+    canvas.drawRRect(
+      rect,
+      Paint()..color = _isHovered ? _tileBgHover : _tileBg,
+    );
 
-    final bgPaint = Paint()
-      ..color = bgColor
-      ..style = PaintingStyle.fill;
-
-    canvas.drawRRect(rect, bgPaint);
-
-    // Border
-    final borderPaint = Paint()
-      ..color = MinesConstants.tileBorderColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = MinesConstants.tileBorderWidth;
-
-    canvas.drawRRect(rect, borderPaint);
-
-    // Subtle hover glow
-    if (_isHovered) {
-      final glowPaint = Paint()
-        ..color = Colors.white.withOpacity(0.1)
+    // Hairline border
+    canvas.drawRRect(
+      rect,
+      Paint()
+        ..color = _tileBorder
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5.0);
+        ..strokeWidth = 0.5,
+    );
 
-      canvas.drawRRect(rect, glowPaint);
+    // Hover glow
+    if (_isHovered) {
+      canvas.drawRRect(
+        rect,
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.06)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+      );
     }
   }
 
   void _renderRevealedTile(Canvas canvas, RRect rect) {
-    // Animate scale
-    final scale = 0.8 + (_revealProgress * 0.2);
-
+    final scale = 0.82 + (_revealProgress * 0.18);
     canvas.save();
     canvas.translate(size.x / 2, size.y / 2);
     canvas.scale(scale);
@@ -120,93 +109,73 @@ class MinesTile extends PositionComponent with TapCallbacks {
     } else {
       _renderBomb(canvas, rect);
     }
-
     canvas.restore();
   }
 
   void _renderDiamond(Canvas canvas, RRect rect) {
-    // Background
-    final bgPaint = Paint()
-      ..color = MinesConstants.backgroundColor
-      ..style = PaintingStyle.fill;
+    final pulse = (math.sin(_pulsePhase) * 0.5 + 0.5);
 
-    canvas.drawRRect(rect, bgPaint);
+    // Base — deep dark
+    canvas.drawRRect(rect, Paint()..color = const Color(0xFF060912));
 
-    // Pulsing glow
-    final pulseIntensity = (math.sin(_pulsePhase) * 0.5 + 0.5) * 0.3;
-    final glowPaint = Paint()
-      ..color = MinesConstants.diamondColor.withOpacity(pulseIntensity)
-      ..maskFilter = MaskFilter.blur(
-        BlurStyle.normal,
-        MinesConstants.glowBlurRadius * pulseIntensity,
-      );
+    // Pulse glow ring
+    canvas.drawRRect(
+      rect,
+      Paint()
+        ..color = _diamondColor.withValues(alpha: 0.06 + pulse * 0.08)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 10 + pulse * 6),
+    );
 
-    canvas.drawRRect(rect, glowPaint);
+    // Border — bright cyan when pulsing
+    canvas.drawRRect(
+      rect,
+      Paint()
+        ..color = _diamondColor.withValues(alpha: 0.35 + pulse * 0.30)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
 
-    // Border
-    final borderPaint = Paint()
-      ..color = MinesConstants.diamondColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = MinesConstants.tileBorderWidth * 2;
-
-    canvas.drawRRect(rect, borderPaint);
-
-    // Diamond icon
     _drawDiamondIcon(canvas);
   }
 
   void _renderBomb(Canvas canvas, RRect rect) {
-    // Background (darker)
-    final bgPaint = Paint()
-      ..color = Colors.black
-      ..style = PaintingStyle.fill;
+    canvas.drawRRect(rect, Paint()..color = const Color(0xFF0A0608));
 
-    canvas.drawRRect(rect, bgPaint);
+    canvas.drawRRect(
+      rect,
+      Paint()
+        ..color = _bombColor.withValues(alpha: 0.18)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+    );
 
-    // Danger glow
-    final glowPaint = Paint()
-      ..color = MinesConstants.bombColor.withOpacity(0.4)
-      ..maskFilter = const MaskFilter.blur(
-        BlurStyle.normal,
-        MinesConstants.glowBlurRadius,
-      );
+    canvas.drawRRect(
+      rect,
+      Paint()
+        ..color = _bombColor.withValues(alpha: 0.55)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8,
+    );
 
-    canvas.drawRRect(rect, glowPaint);
-
-    // Border
-    final borderPaint = Paint()
-      ..color = MinesConstants.bombColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = MinesConstants.tileBorderWidth * 2;
-
-    canvas.drawRRect(rect, borderPaint);
-
-    // Bomb icon
     _drawBombIcon(canvas);
   }
 
   void _renderExplodingTile(Canvas canvas, RRect rect) {
-    // Explosion animation
-    final explosionScale = 1.0 + (_revealProgress * 0.5);
-    final explosionOpacity = 1.0 - _revealProgress;
+    final scale = 1.0 + (_revealProgress * 0.45);
+    final opacity = 1.0 - _revealProgress;
 
     canvas.save();
     canvas.translate(size.x / 2, size.y / 2);
-    canvas.scale(explosionScale);
+    canvas.scale(scale);
     canvas.translate(-size.x / 2, -size.y / 2);
 
-    // Flashing red background
-    final bgPaint = Paint()
-      ..color = MinesConstants.bombColor.withOpacity(explosionOpacity * 0.8);
+    canvas.drawRRect(
+      rect,
+      Paint()..color = _bombColor.withValues(alpha: opacity * 0.75),
+    );
 
-    canvas.drawRRect(rect, bgPaint);
-
-    // Bomb icon
-    _drawBombIcon(canvas, opacity: explosionOpacity);
-
+    _drawBombIcon(canvas, opacity: opacity);
     canvas.restore();
 
-    // Explosion particles effect
     if (_revealProgress < 0.5) {
       _drawExplosionParticles(canvas);
     }
@@ -214,19 +183,30 @@ class MinesTile extends PositionComponent with TapCallbacks {
 
   void _drawDiamondIcon(Canvas canvas, {double opacity = 1.0}) {
     final center = Offset(size.x / 2, size.y / 2);
-    final glow = Paint()
-      ..color = MinesConstants.diamondColor.withOpacity(opacity * 0.35)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
-    canvas.drawCircle(center, size.x * 0.20, glow);
+
+    // Soft glow behind icon
+    canvas.drawCircle(
+      center,
+      size.x * 0.22,
+      Paint()
+        ..color = _diamondColor.withValues(alpha: 0.22 * opacity)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+    );
 
     final diamondPainter = TextPainter(
       text: TextSpan(
         text: kDiamondGlyph,
         style: TextStyle(
-          color: MinesConstants.diamondColor.withOpacity(opacity),
-          fontSize: size.x * 0.42,
-          fontWeight: FontWeight.w800,
+          color: _diamondColor.withValues(alpha: opacity),
+          fontSize: size.x * 0.44,
+          fontWeight: FontWeight.w700,
           fontFamily: 'MaterialIcons',
+          shadows: [
+            Shadow(
+              color: _diamondColor.withValues(alpha: 0.80 * opacity),
+              blurRadius: 10,
+            ),
+          ],
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -243,54 +223,48 @@ class MinesTile extends PositionComponent with TapCallbacks {
 
   void _drawBombIcon(Canvas canvas, {double opacity = 1.0}) {
     final iconSize = size.x * MinesConstants.iconSizeMultiplier;
-    final center = Vector2(size.x / 2, size.y / 2);
+    final center = Offset(size.x / 2, size.y / 2);
 
-    final paint = Paint()
-      ..color = MinesConstants.bombColor.withOpacity(opacity)
+    final bodyPaint = Paint()
+      ..color = _bombColor.withValues(alpha: opacity)
       ..style = PaintingStyle.fill;
 
-    // Bomb body (circle)
-    canvas.drawCircle(Offset(center.x, center.y), iconSize / 2.5, paint);
+    canvas.drawCircle(center, iconSize / 2.5, bodyPaint);
 
-    // Fuse
     final fusePaint = Paint()
-      ..color = MinesConstants.bombColor.withOpacity(opacity)
+      ..color = _bombColor.withValues(alpha: opacity)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
+      ..strokeWidth = 1.8
       ..strokeCap = StrokeCap.round;
 
     canvas.drawLine(
-      Offset(center.x + iconSize / 4, center.y - iconSize / 4),
-      Offset(center.x + iconSize / 2.5, center.y - iconSize / 2),
+      Offset(center.dx + iconSize / 4, center.dy - iconSize / 4),
+      Offset(center.dx + iconSize / 2.5, center.dy - iconSize / 2),
       fusePaint,
     );
 
-    // Spark
+    // Spark — amber
     canvas.drawCircle(
-      Offset(center.x + iconSize / 2.5, center.y - iconSize / 2),
-      3.0,
-      Paint()..color = Colors.orange.withOpacity(opacity),
+      Offset(center.dx + iconSize / 2.5, center.dy - iconSize / 2),
+      2.5,
+      Paint()..color = const Color(0xFFFFAB00).withValues(alpha: opacity),
     );
   }
 
   void _drawExplosionParticles(Canvas canvas) {
     final particlePaint = Paint()
-      ..color = MinesConstants.bombColor.withOpacity(0.6)
+      ..color = _bombColor.withValues(alpha: 0.7 * (1 - _revealProgress))
       ..style = PaintingStyle.fill;
 
-    final center = Vector2(size.x / 2, size.y / 2);
-
-    // Simple particle burst
+    final center = Offset(size.x / 2, size.y / 2);
     for (int i = 0; i < 8; i++) {
       final angle = (i / 8) * 2 * math.pi;
-      final distance = _revealProgress * size.x * 0.4;
-      final particlePos = Vector2(
-        center.x + math.cos(angle) * distance,
-        center.y + math.sin(angle) * distance,
-      );
-
+      final distance = _revealProgress * size.x * 0.45;
       canvas.drawCircle(
-        Offset(particlePos.x, particlePos.y),
+        Offset(
+          center.dx + math.cos(angle) * distance,
+          center.dy + math.sin(angle) * distance,
+        ),
         3.0 * (1.0 - _revealProgress),
         particlePaint,
       );
@@ -313,22 +287,14 @@ class MinesTile extends PositionComponent with TapCallbacks {
 
   @override
   void onTapDown(TapDownEvent event) {
-    if (state == TileState.hidden) {
-      onTap(row, col);
-    }
+    if (state == TileState.hidden) onTap(row, col);
   }
 
   @override
-  void onTapUp(TapUpEvent event) {
-    _isHovered = false;
-  }
+  void onTapUp(TapUpEvent event) => _isHovered = false;
 
   @override
-  void onTapCancel(TapCancelEvent event) {
-    _isHovered = false;
-  }
+  void onTapCancel(TapCancelEvent event) => _isHovered = false;
 
-  void setHovered(bool hovered) {
-    _isHovered = hovered;
-  }
+  void setHovered(bool hovered) => _isHovered = hovered;
 }

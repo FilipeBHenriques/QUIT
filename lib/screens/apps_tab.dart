@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:quit/usage_timer.dart';
 import 'package:quit/widgets/hold_to_unblock_button.dart';
-import 'package:quit/widgets/neon_card.dart';
 import 'package:quit/widgets/neon_switch.dart';
 import 'package:quit/widgets/neon_slider.dart';
 import 'package:quit/widgets/neon_button.dart';
@@ -15,8 +14,7 @@ import 'package:quit/screens/app_search_screen.dart';
 import 'package:quit/widgets/app_icon_widget.dart';
 import 'package:quit/theme/neon_palette.dart';
 
-const Color kRed = Color(0xFFEF4444);
-const Color kWhite = NeonPalette.text;
+const Color kAccent = Color(0xFFFF1A5C); // neon rose
 
 class AppsSelectionScreen extends StatefulWidget {
   const AppsSelectionScreen({super.key});
@@ -43,11 +41,9 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
     _loadBlockedApps();
     _initializeTimer();
 
-    _timerUpdateTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _timerUpdateTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted && !_isSearchOpen && _usageTimer != null) {
-        _usageTimer!.reload().then((_) {
-          setState(() {});
-        });
+        _usageTimer!.reload().then((_) => setState(() {}));
       }
     });
   }
@@ -63,7 +59,6 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     _usageTimer = UsageTimer(prefs);
     await _usageTimer!.checkAndResetIfNeeded();
-
     setState(() {
       _dailyLimitMinutes = (_usageTimer!.dailyLimitSeconds / 60).round();
     });
@@ -72,15 +67,12 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
   Future<void> _loadBlockedApps() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final blockedList = prefs.getStringList('blocked_apps') ?? [];
-    setState(() {
-      _blockedApps = blockedList.toSet();
-    });
+    setState(() => _blockedApps = blockedList.toSet());
 
     List<AppInfo> apps = await InstalledApps.getInstalledApps(
       excludeSystemApps: true,
       withIcon: true,
     );
-
     apps.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     if (mounted) {
@@ -97,9 +89,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
       await platform.invokeMethod('updateBlockedApps', {
         'blockedApps': _blockedApps.toList(),
       });
-    } catch (e) {
-      print('❌ Error syncing blocked apps: $e');
-    }
+    } catch (_) {}
   }
 
   Future<void> _toggleAppBlock(String packageName, bool blocked) async {
@@ -110,18 +100,13 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
         _blockedApps.remove(packageName);
       }
     });
-
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('blocked_apps', _blockedApps.toList());
-
     await _syncBlockedApps();
   }
 
   Future<void> _updateDailyLimit(int minutes) async {
-    setState(() {
-      _dailyLimitMinutes = minutes;
-    });
-
+    setState(() => _dailyLimitMinutes = minutes);
     if (_usageTimer != null) {
       await _usageTimer!.setDailyLimit(minutes * 60);
     }
@@ -139,279 +124,251 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
       ),
     );
     _isSearchOpen = false;
-
     if (!mounted) return;
     if (updatedBlockedApps != null) {
-      setState(() {
-        _blockedApps = updatedBlockedApps;
-      });
+      setState(() => _blockedApps = updatedBlockedApps);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: CircularProgressIndicator(color: kAccent, strokeWidth: 1.5),
+      );
     }
-    final displayedApps = List<AppInfo>.from(_installedApps);
-    displayedApps.sort((a, b) {
-      final aBlocked = _blockedApps.contains(a.packageName);
-      final bBlocked = _blockedApps.contains(b.packageName);
-      if (aBlocked && !bBlocked) return -1;
-      if (!aBlocked && bBlocked) return 1;
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
+
+    final displayedApps = List<AppInfo>.from(_installedApps)
+      ..sort((a, b) {
+        final aBlocked = _blockedApps.contains(a.packageName);
+        final bBlocked = _blockedApps.contains(b.packageName);
+        if (aBlocked && !bBlocked) return -1;
+        if (!aBlocked && bBlocked) return 1;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
 
     return Container(
-      decoration: BoxDecoration(gradient: NeonPalette.pageGlow),
+      color: NeonPalette.bg,
       child: Column(
         children: [
-          // Blocking Mode Card
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: NeonCard(
-              glowColor: kRed, // All neon color is red now
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Blocking Mode',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: kWhite,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Block immediately when selected',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: NeonPalette.textMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  NeonSwitch(
-                    value: _blockingMode,
-                    onChanged: (value) {
-                      setState(() {
-                        _blockingMode = value;
-                      });
-                    },
-                    activeColor: kRed,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Daily Time Limit Card
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: NeonCard(
-              glowColor: kRed, // All neon color is red now
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // ── Blocking Mode ──
+          _SettingsCard(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Daily Time Limit',
+                        'Blocking Mode',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: kWhite,
-                          letterSpacing: 1.2,
+                          color: NeonPalette.text,
+                          letterSpacing: 0.3,
                         ),
                       ),
-                      Text(
-                        '$_dailyLimitMinutes min/day',
-                        style: const TextStyle(fontSize: 12, color: kRed),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  NeonSlider(
-                    value: _dailyLimitMinutes.toDouble(),
-                    min: 0,
-                    max: 120,
-                    divisions: 120,
-                    onChanged: (value) {
-                      setState(() {
-                        _dailyLimitMinutes = value.round();
-                      });
-                    },
-                    onChangeEnd: (value) {
-                      _updateDailyLimit(value.round());
-                    },
-                    activeColor: kRed,
-                  ),
-                  if (_dailyLimitMinutes > 0 && _usageTimer != null) ...[
-                    const SizedBox(height: 16),
-                    NeonProgressBar(
-                      value: _usageTimer!.usedTodaySeconds.toDouble(),
-                      max: _usageTimer!.dailyLimitSeconds.toDouble(),
-                      color: kRed,
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Used Today',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: NeonPalette.textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _usageTimer!.usedTodayFormatted,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: kRed,
-                                  fontFeatures: [
-                                    FontFeature.tabularFigures(),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              const Text(
-                                'Remaining',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: NeonPalette.textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _usageTimer!.remainingFormatted,
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: kWhite,
-                                  fontFeatures: [
-                                    FontFeature.tabularFigures(),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Resets in: ${_usageTimer!.formatDuration(_usageTimer!.timeUntilReset())}',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: NeonPalette.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    NeonButton(
-                      onPressed: () {
-                        _usageTimer?.resetTimer();
-                        setState(() {});
-                      },
-                      text: 'Reset Usage',
-                      color: kRed,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-
-          // Search launcher
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: _openSearchMode,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: NeonPalette.surfaceSoft,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: NeonPalette.border),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.search, color: NeonPalette.textMuted),
-                      SizedBox(width: 10),
-                      Text(
-                        'Search apps...',
+                      const SizedBox(height: 3),
+                      const Text(
+                        'Block immediately when selected',
                         style: TextStyle(
+                          fontSize: 11,
                           color: NeonPalette.textMuted,
-                          fontSize: 14,
                         ),
                       ),
                     ],
                   ),
                 ),
+                NeonSwitch(
+                  value: _blockingMode,
+                  onChanged: (value) => setState(() => _blockingMode = value),
+                  activeColor: kAccent,
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 2),
+
+          // ── Daily Time Limit ──
+          _SettingsCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Daily Time Limit',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: NeonPalette.text,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    Text(
+                      '$_dailyLimitMinutes min / day',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: kAccent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                NeonSlider(
+                  value: _dailyLimitMinutes.toDouble(),
+                  min: 0,
+                  max: 120,
+                  divisions: 120,
+                  onChanged: (v) =>
+                      setState(() => _dailyLimitMinutes = v.round()),
+                  onChangeEnd: (v) => _updateDailyLimit(v.round()),
+                  activeColor: kAccent,
+                ),
+                if (_dailyLimitMinutes > 0 && _usageTimer != null) ...[
+                  const SizedBox(height: 18),
+                  NeonProgressBar(
+                    value: _usageTimer!.usedTodaySeconds.toDouble(),
+                    max: _usageTimer!.dailyLimitSeconds.toDouble(),
+                    color: kAccent,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _StatColumn(
+                          label: 'Used Today',
+                          value: _usageTimer!.usedTodayFormatted,
+                          valueColor: kAccent,
+                          align: CrossAxisAlignment.start,
+                        ),
+                      ),
+                      Expanded(
+                        child: _StatColumn(
+                          label: 'Remaining',
+                          value: _usageTimer!.remainingFormatted,
+                          valueColor: NeonPalette.text,
+                          align: CrossAxisAlignment.end,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Resets in ${_usageTimer!.formatDuration(_usageTimer!.timeUntilReset())}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: NeonPalette.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  NeonButton(
+                    onPressed: () {
+                      _usageTimer?.resetTimer();
+                      setState(() {});
+                    },
+                    text: 'Reset Usage',
+                    color: kAccent.withValues(alpha: 0.08),
+                    textColor: kAccent,
+                    borderColor: kAccent.withValues(alpha: 0.30),
+                    glowColor: kAccent,
+                    glowOpacity: 0.10,
+                    borderRadius: 10,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    fontSize: 13,
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 2),
+
+          // ── Search bar ──
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: GestureDetector(
+              onTap: _openSearchMode,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 13,
+                ),
+                decoration: BoxDecoration(
+                  color: NeonPalette.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: NeonPalette.border,
+                    width: 0.5,
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.search_rounded,
+                      color: NeonPalette.textMuted,
+                      size: 18,
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Search apps...',
+                      style: TextStyle(
+                        color: NeonPalette.textMuted,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
 
-          // App List
+          // ── App list ──
           Expanded(
             child: displayedApps.isEmpty
                 ? const Center(
                     child: Text(
                       'No apps found',
-                      style: TextStyle(color: kWhite),
+                      style: TextStyle(color: NeonPalette.textMuted),
                     ),
                   )
                 : ListView.separated(
                     controller: _listController,
                     itemCount: displayedApps.length,
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(height: 2),
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 80),
+                    separatorBuilder: (_, _) => const SizedBox(height: 2),
                     itemBuilder: (context, index) {
                       final app = displayedApps[index];
-                      final isBlocked = _blockedApps.contains(app.packageName);
+                      final isBlocked =
+                          _blockedApps.contains(app.packageName);
 
                       return Container(
                         decoration: BoxDecoration(
-                          border: Border.all(color: NeonPalette.border),
+                          color: isBlocked
+                              ? kAccent.withValues(alpha: 0.04)
+                              : NeonPalette.surface,
                           borderRadius: BorderRadius.circular(12),
-                          color: NeonPalette.surface,
+                          border: Border.all(
+                            color: isBlocked
+                                ? kAccent.withValues(alpha: 0.22)
+                                : NeonPalette.border,
+                            width: 0.5,
+                          ),
                         ),
                         child: ListTile(
                           contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
+                            horizontal: 14,
+                            vertical: 6,
                           ),
                           leading: Container(
-                            width: 48,
-                            height: 48,
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
                               color: NeonPalette.surfaceSoft,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                             child: Center(child: AppIconWidget(app: app)),
                           ),
@@ -419,7 +376,8 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                             app.name,
                             style: const TextStyle(
                               fontWeight: FontWeight.w500,
-                              color: kWhite,
+                              fontSize: 14,
+                              color: NeonPalette.text,
                             ),
                           ),
                           subtitle: Text(
@@ -431,19 +389,14 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                           ),
                           trailing: isBlocked
                               ? HoldToUnblockButton(
-                                  onUnblocked: () async {
-                                    await _toggleAppBlock(
-                                      app.packageName,
-                                      false,
-                                    );
-                                  },
+                                  onUnblocked: () async =>
+                                      _toggleAppBlock(app.packageName, false),
                                 )
                               : NeonSwitch(
                                   value: isBlocked,
-                                  onChanged: (value) {
-                                    _toggleAppBlock(app.packageName, value);
-                                  },
-                                  activeColor: kRed,
+                                  onChanged: (v) =>
+                                      _toggleAppBlock(app.packageName, v),
+                                  activeColor: kAccent,
                                 ),
                         ),
                       );
@@ -452,6 +405,69 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// Shared widgets
+// ─────────────────────────────────────────────
+
+class _SettingsCard extends StatelessWidget {
+  final Widget child;
+  const _SettingsCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: NeonPalette.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: NeonPalette.border, width: 0.5),
+        ),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _StatColumn extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color valueColor;
+  final CrossAxisAlignment align;
+
+  const _StatColumn({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+    required this.align,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: align,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: NeonPalette.textMuted),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: valueColor,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
     );
   }
 }

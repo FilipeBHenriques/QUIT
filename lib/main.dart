@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart' as flutter;
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'screens/blocked_screen.dart';
@@ -10,6 +11,7 @@ import 'screens/websites_tab.dart';
 import 'screens/blackjack_screen.dart';
 import 'screens/roulette_screen.dart';
 import 'screens/mines_screen.dart';
+import 'screens/permissions_screen.dart';
 import 'package:go_router/go_router.dart';
 
 void main() async {
@@ -23,29 +25,24 @@ Future<void> _initializeServicesOnLaunch() async {
 
   try {
     SharedPreferences prefs = await SharedPreferences.getInstance();
+    const platform = MethodChannel('com.quit.app/monitoring');
 
-    List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
+    final List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
+    final List<String> blockedWebsites =
+        prefs.getStringList('blocked_websites') ?? [];
+
     if (blockedApps.isNotEmpty) {
-      const platform = MethodChannel('com.quit.app/monitoring');
       await platform.invokeMethod('startMonitoring', {
         'blockedApps': blockedApps,
       });
-      print('🚀 [LAUNCH] App monitoring started: ${blockedApps.length} apps');
-    }
-
-    List<String> blockedWebsites =
-        prefs.getStringList('blocked_websites') ?? [];
-    if (blockedWebsites.isNotEmpty) {
-      const platform = MethodChannel('com.quit.app/monitoring');
-      await platform.invokeMethod('updateBlockedWebsites', {
-        'blockedWebsites': blockedWebsites,
-      });
-      print(
-        '🌐 [LAUNCH] Website monitoring synced: ${blockedWebsites.length} sites',
-      );
+      if (blockedWebsites.isNotEmpty) {
+        await platform.invokeMethod('updateBlockedWebsites', {
+          'blockedWebsites': blockedWebsites,
+        });
+      }
     }
   } catch (e) {
-    print('❌ [LAUNCH] Error initializing services: $e');
+    // Silently ignore — service may not be running yet.
   }
 }
 
@@ -89,11 +86,19 @@ class QuitApp extends flutter.StatelessWidget {
             path: '/blocking_selection',
             builder: (context, state) => const BlockingSelectionScreen(),
           ),
+          GoRoute(
+            path: '/permissions',
+            builder: (context, state) => const PermissionsScreen(),
+          ),
         ],
       ),
     );
   }
 }
+
+// ============================================================================
+// HOME SCREEN
+// ============================================================================
 
 class HomeScreen extends flutter.StatefulWidget {
   const HomeScreen({super.key});
@@ -105,23 +110,27 @@ class HomeScreen extends flutter.StatefulWidget {
 class _HomeScreenState extends flutter.State<HomeScreen>
     with
         flutter.WidgetsBindingObserver,
-        flutter.SingleTickerProviderStateMixin {
+        flutter.TickerProviderStateMixin {
   static const platform = MethodChannel('com.quit.app/monitoring');
-  late final flutter.AnimationController _qGlowController;
+  static const _platform = MethodChannel('com.quit.app/permissions');
+  late final flutter.AnimationController _waveController;
+  bool? _permissionsOk;
+  bool _hasAutoNavigated = false;
 
   @override
   void initState() {
     super.initState();
-    flutter.WidgetsBinding.instance.addObserver(this);
-    _qGlowController = flutter.AnimationController(
+    _waveController = flutter.AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2200),
-    )..repeat(reverse: true);
+      duration: const Duration(milliseconds: 2400),
+    )..repeat();
+    flutter.WidgetsBinding.instance.addObserver(this);
+    _checkPermissions();
   }
 
   @override
   void dispose() {
-    _qGlowController.dispose();
+    _waveController.dispose();
     flutter.WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -129,7 +138,25 @@ class _HomeScreenState extends flutter.State<HomeScreen>
   @override
   void didChangeAppLifecycleState(flutter.AppLifecycleState state) {
     if (state == flutter.AppLifecycleState.resumed) {
+      _checkPermissions();
       _syncServicesIfNeeded();
+    }
+  }
+
+  Future<void> _checkPermissions() async {
+    try {
+      final result = await _platform.invokeMapMethod<String, bool>('checkAll');
+      if (!mounted) return;
+      final ok = result?.values.every((v) => v) ?? false;
+      setState(() => _permissionsOk = ok);
+      if (!ok && !_hasAutoNavigated) {
+        _hasAutoNavigated = true;
+        flutter.WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) context.push('/permissions');
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _permissionsOk = true);
     }
   }
 
@@ -144,7 +171,6 @@ class _HomeScreenState extends flutter.State<HomeScreen>
         await platform.invokeMethod('updateBlockedApps', {
           'blockedApps': blockedApps,
         });
-        print('🔄 [RESUME] Updated app monitoring: ${blockedApps.length} apps');
       }
 
       List<String> blockedWebsites =
@@ -153,83 +179,195 @@ class _HomeScreenState extends flutter.State<HomeScreen>
         await platform.invokeMethod('updateBlockedWebsites', {
           'blockedWebsites': blockedWebsites,
         });
-        print(
-          '🌐 [RESUME] Updated website monitoring: ${blockedWebsites.length} sites',
-        );
       }
-    } catch (e) {
-      print('❌ [RESUME] Error syncing services: $e');
-    }
+    } catch (_) {}
   }
 
   @override
   flutter.Widget build(flutter.BuildContext context) {
     return Scaffold(
-      child: flutter.Container(
-        decoration: const flutter.BoxDecoration(
-          gradient: flutter.LinearGradient(
-            begin: flutter.Alignment.topCenter,
-            end: flutter.Alignment.bottomCenter,
-            colors: [
-              flutter.Color(0xFF06090F),
-              flutter.Color(0xFF0B1220),
-              flutter.Color(0xFF05070B),
-            ],
+      child: flutter.GestureDetector(
+        behavior: flutter.HitTestBehavior.opaque,
+        onTap: () async {
+          await context.push('/blocking_selection');
+          _syncServicesIfNeeded();
+        },
+        child: flutter.Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: const flutter.BoxDecoration(
+            gradient: flutter.LinearGradient(
+              begin: flutter.Alignment.topCenter,
+              end: flutter.Alignment.bottomCenter,
+              colors: [
+                flutter.Color(0xFF04050C),
+                flutter.Color(0xFF020408),
+                flutter.Color(0xFF030408),
+              ],
+            ),
           ),
-        ),
-        child: flutter.Center(
-          child: flutter.Column(
-            mainAxisAlignment: flutter.MainAxisAlignment.center,
+          child: flutter.Stack(
             children: [
-              flutter.GestureDetector(
-                onTap: () async {
-                  await context.push('/blocking_selection');
-                  _syncServicesIfNeeded();
-                },
-                child: flutter.AnimatedBuilder(
-                  animation: _qGlowController,
-                  builder: (context, _) {
-                    final t = _qGlowController.value;
-                    final pulse = 0.96 + (t * 0.08);
-                    final ringGlow = 0.18 + (t * 0.34);
-                    final textGlow = 0.38 + (t * 0.5);
-                    return flutter.Transform.scale(
-                      scale: pulse,
-                      child: flutter.Container(
-                        width: 190,
-                        height: 190,
-                        alignment: flutter.Alignment.center,
-                        decoration: flutter.BoxDecoration(
-                          shape: flutter.BoxShape.circle,
-                          boxShadow: [
-                            flutter.BoxShadow(
-                              color: const flutter.Color(
-                                0xFFFFFFFF,
-                              ).withOpacity(ringGlow),
-                              blurRadius: 56,
-                              spreadRadius: 4,
+              // Background grid
+              flutter.CustomPaint(
+                painter: _GridPainter(),
+                size: flutter.Size.infinite,
+              ),
+
+              flutter.SafeArea(
+                child: flutter.SizedBox.expand(
+                  child: flutter.Stack(
+                    alignment: flutter.Alignment.center,
+                    children: [
+
+                      // ── Centered main content ──
+                      flutter.Column(
+                        mainAxisSize: flutter.MainAxisSize.min,
+                        crossAxisAlignment: flutter.CrossAxisAlignment.center,
+                        children: [
+                          // QUIT letter tiles — white traveling wave
+                          flutter.AnimatedBuilder(
+                            animation: _waveController,
+                            builder: (context, _) {
+                              const letters = ['Q', 'U', 'I', 'T'];
+                              const white = flutter.Color(0xFFFFFFFF);
+                              return flutter.Row(
+                                mainAxisSize: flutter.MainAxisSize.min,
+                                children: List.generate(letters.length, (i) {
+                                  final g = (math.sin(_waveController.value * 2 * math.pi - i * math.pi / 2) + 1) / 2;
+                                  return flutter.Container(
+                                    margin: const flutter.EdgeInsets.symmetric(horizontal: 5),
+                                    width: 68,
+                                    height: 74,
+                                    decoration: flutter.BoxDecoration(
+                                      color: const flutter.Color(0xFF080A12),
+                                      borderRadius: flutter.BorderRadius.circular(10),
+                                      border: flutter.Border.all(
+                                        color: white.withValues(alpha: 0.10 + g * 0.55),
+                                        width: 0.5,
+                                      ),
+                                      boxShadow: [
+                                        flutter.BoxShadow(
+                                          color: white.withValues(alpha: g * 0.18),
+                                          blurRadius: 20,
+                                          spreadRadius: 0,
+                                        ),
+                                      ],
+                                    ),
+                                    alignment: flutter.Alignment.center,
+                                    child: flutter.Text(
+                                      letters[i],
+                                      style: flutter.TextStyle(
+                                        fontSize: 36,
+                                        fontWeight: flutter.FontWeight.w800,
+                                        color: flutter.Color.lerp(
+                                          const flutter.Color(0xFF3A4055),
+                                          const flutter.Color(0xFFFFFFFF),
+                                          g,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              );
+                            },
+                          ),
+
+                          const flutter.SizedBox(height: 32),
+
+                          // Thin rule
+                          flutter.Container(
+                            width: 200,
+                            height: 0.5,
+                            color: const flutter.Color(0xFF1C2030),
+                          ),
+
+                          const flutter.SizedBox(height: 20),
+
+                          // TAP TO CONFIGURE — fades with wave
+                          flutter.AnimatedBuilder(
+                            animation: _waveController,
+                            builder: (context, _) {
+                              final t = _waveController.value;
+                              final opacity = 0.28 + (t > 0.5 ? (1 - t) : t) * 0.32;
+                              return flutter.Text(
+                                'TAP TO CONFIGURE',
+                                style: flutter.TextStyle(
+                                  color: const flutter.Color(0xFFFFFFFF).withValues(alpha: opacity),
+                                  fontSize: 9,
+                                  fontWeight: flutter.FontWeight.w700,
+                                  letterSpacing: 4,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+
+                      // ── Bottom content (pinned) ──
+                      flutter.Positioned(
+                        bottom: 28,
+                        left: 0,
+                        right: 0,
+                        child: flutter.Column(
+                          mainAxisSize: flutter.MainAxisSize.min,
+                          crossAxisAlignment: flutter.CrossAxisAlignment.center,
+                          children: [
+                            if (_permissionsOk == false) ...[
+                              flutter.GestureDetector(
+                                onTap: () => context.push('/permissions'),
+                                child: flutter.Container(
+                                  padding: const flutter.EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 7,
+                                  ),
+                                  decoration: flutter.BoxDecoration(
+                                    color: const flutter.Color(0xFFFF1A5C).withValues(alpha: 0.08),
+                                    borderRadius: flutter.BorderRadius.circular(20),
+                                    border: flutter.Border.all(
+                                      color: const flutter.Color(0xFFFF1A5C).withValues(alpha: 0.28),
+                                      width: 0.5,
+                                    ),
+                                  ),
+                                  child: flutter.Row(
+                                    mainAxisSize: flutter.MainAxisSize.min,
+                                    children: [
+                                      flutter.Icon(
+                                        Icons.warning_amber_rounded,
+                                        size: 11,
+                                        color: const flutter.Color(0xFFFF1A5C),
+                                      ),
+                                      const flutter.SizedBox(width: 6),
+                                      const flutter.Text(
+                                        'PERMISSIONS NEEDED',
+                                        style: flutter.TextStyle(
+                                          color: flutter.Color(0xFFFF1A5C),
+                                          fontSize: 9,
+                                          fontWeight: flutter.FontWeight.w700,
+                                          letterSpacing: 1.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const flutter.SizedBox(height: 14),
+                            ],
+                            const flutter.Text(
+                              'FOCUSED LIVING',
+                              style: flutter.TextStyle(
+                                color: flutter.Color(0xFF2E3448),
+                                fontSize: 10,
+                                fontWeight: flutter.FontWeight.w700,
+                                letterSpacing: 6,
+                              ),
                             ),
                           ],
                         ),
-                        child: flutter.Text(
-                          'Q',
-                          style: flutter.TextStyle(
-                            color: const flutter.Color(0xFFFFFFFF),
-                            fontSize: 122,
-                            fontWeight: flutter.FontWeight.w700,
-                            shadows: [
-                              flutter.Shadow(
-                                color: const flutter.Color(
-                                  0xFFFFFFFF,
-                                ).withOpacity(textGlow),
-                                blurRadius: 34,
-                              ),
-                            ],
-                          ),
-                        ),
                       ),
-                    );
-                  },
+
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -239,6 +377,39 @@ class _HomeScreenState extends flutter.State<HomeScreen>
     );
   }
 }
+
+// Background grid painter
+class _GridPainter extends flutter.CustomPainter {
+  @override
+  void paint(flutter.Canvas canvas, flutter.Size size) {
+    final paint = flutter.Paint()
+      ..color = const flutter.Color(0xFF14161E).withValues(alpha: 0.4)
+      ..strokeWidth = 0.5;
+    const step = 40.0;
+    for (double x = 0; x <= size.width; x += step) {
+      canvas.drawLine(
+        flutter.Offset(x, 0),
+        flutter.Offset(x, size.height),
+        paint,
+      );
+    }
+    for (double y = 0; y <= size.height; y += step) {
+      canvas.drawLine(
+        flutter.Offset(0, y),
+        flutter.Offset(size.width, y),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant flutter.CustomPainter oldDelegate) => false;
+}
+
+
+// ============================================================================
+// BLOCKING SELECTION SCREEN
+// ============================================================================
 
 class BlockingSelectionScreen extends flutter.StatefulWidget {
   const BlockingSelectionScreen({super.key});
@@ -270,33 +441,31 @@ class _BlockingSelectionScreenState
       ],
       child: flutter.Column(
         children: [
-          const flutter.SizedBox(height: 10),
+          const flutter.SizedBox(height: 8),
           Padding(
             padding: const flutter.EdgeInsets.symmetric(horizontal: 24),
-            child: flutter.Container(
-              child: flutter.Row(
-                children: [
-                  flutter.Expanded(
-                    child: _TopSelectorItem(
-                      selected: _index == 0,
-                      icon: LucideIcons.grid3x3,
-                      label: 'Apps',
-                      onTap: () => setState(() => _index = 0),
-                    ),
+            child: flutter.Row(
+              children: [
+                flutter.Expanded(
+                  child: _TopSelectorItem(
+                    selected: _index == 0,
+                    icon: LucideIcons.grid3x3,
+                    label: 'Apps',
+                    onTap: () => setState(() => _index = 0),
                   ),
-                  flutter.Expanded(
-                    child: _TopSelectorItem(
-                      selected: _index == 1,
-                      icon: LucideIcons.globe,
-                      label: 'Websites',
-                      onTap: () => setState(() => _index = 1),
-                    ),
+                ),
+                flutter.Expanded(
+                  child: _TopSelectorItem(
+                    selected: _index == 1,
+                    icon: LucideIcons.globe,
+                    label: 'Websites',
+                    onTap: () => setState(() => _index = 1),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          const flutter.SizedBox(height: 8),
+          const flutter.SizedBox(height: 4),
           flutter.Expanded(
             child: _index == 0
                 ? const AppsSelectionScreen()
@@ -323,11 +492,12 @@ class _TopSelectorItem extends flutter.StatelessWidget {
 
   @override
   flutter.Widget build(flutter.BuildContext context) {
+    const neonRose = flutter.Color(0xFFFF1A5C);
     return flutter.GestureDetector(
       onTap: onTap,
       child: flutter.AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const flutter.EdgeInsets.only(top: 16, bottom: 10),
+        duration: const Duration(milliseconds: 200),
+        padding: const flutter.EdgeInsets.only(top: 14, bottom: 10),
         decoration: flutter.BoxDecoration(
           borderRadius: flutter.BorderRadius.circular(12),
         ),
@@ -336,10 +506,10 @@ class _TopSelectorItem extends flutter.StatelessWidget {
           children: [
             Icon(
               icon,
-              size: 22,
+              size: 20,
               color: selected
                   ? const flutter.Color(0xFFFFFFFF)
-                  : const flutter.Color(0xFF8B95A7),
+                  : const flutter.Color(0xFF3D4558),
             ),
             const flutter.SizedBox(height: 8),
             flutter.Text(
@@ -347,25 +517,34 @@ class _TopSelectorItem extends flutter.StatelessWidget {
               style: flutter.TextStyle(
                 color: selected
                     ? const flutter.Color(0xFFFFFFFF)
-                    : const flutter.Color(0xFF8B95A7),
-                fontSize: 16,
-                fontWeight: flutter.FontWeight.w500,
+                    : const flutter.Color(0xFF3D4558),
+                fontSize: 15,
+                fontWeight: flutter.FontWeight.w600,
+                letterSpacing: 0.5,
               ),
             ),
-            const flutter.SizedBox(height: 12),
+            const flutter.SizedBox(height: 10),
             flutter.AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              height: 3,
-              width: selected ? 120 : 0,
+              duration: const Duration(milliseconds: 200),
+              height: 2,
+              width: selected ? 100 : 0,
               decoration: flutter.BoxDecoration(
-                color: const flutter.Color.fromARGB(255, 255, 0, 0),
+                color: neonRose,
                 borderRadius: flutter.BorderRadius.circular(999),
-                boxShadow: [
-                  flutter.BoxShadow(
-                    color: const flutter.Color(0xFFFF2D8F).withOpacity(0.45),
-                    blurRadius: 10,
-                  ),
-                ],
+                boxShadow: selected
+                    ? [
+                        flutter.BoxShadow(
+                          color: neonRose.withValues(alpha: 0.55),
+                          blurRadius: 12,
+                          spreadRadius: 0,
+                        ),
+                        flutter.BoxShadow(
+                          color: neonRose.withValues(alpha: 0.22),
+                          blurRadius: 24,
+                          spreadRadius: 2,
+                        ),
+                      ]
+                    : null,
               ),
             ),
           ],

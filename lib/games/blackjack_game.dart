@@ -10,36 +10,30 @@ import 'package:quit/game_result.dart';
 // ============================================================================
 
 class GameConstants {
-  // Card dimensions (could even make these responsive too)
   static const double cardWidth = 80.0;
   static const double cardHeight = 112.0;
-  static const double cardRadius = 8.0;
+  static const double cardRadius = 10.0;
 
-  // Layout - all as ratios of screen size
-  static const double cardSpacing = 75.0; // or make this ratio-based too
-  static const double deckXRatio = 0.95; // 5% from left edge
-  static const double deckCenterYRatio = 0.5; // 50% down
+  static const double cardSpacing = 75.0;
+  static const double deckXRatio = 0.95;
+  static const double deckCenterYRatio = 0.5;
 
-  // Positioning as ratios (0.0 to 1.0)
-  static const double dealerCardsYRatio = 0.25; // 20% from top
-  static const double playerCardsYRatio = 0.80; // 75% from top
-  static const double dealerLabelYRatio = 0.05; // 8% from top
-  static const double playerLabelYRatio = 0.67; // 67% from top
+  static const double dealerCardsYRatio = 0.25;
+  static const double playerCardsYRatio = 0.80;
+  static const double dealerLabelYRatio = 0.05;
+  static const double playerLabelYRatio = 0.67;
   static const double dealerScoreYRatio = 0.125;
   static const double playerScoreYRatio = 0.70;
 
-  // Game rules
-  static const int deckShuffleThreshold = 15; // Reshuffle when < 15 cards
+  static const int deckShuffleThreshold = 15;
   static const int dealerStandThreshold = 17;
   static const int blackjackScore = 21;
 
-  // Animation timings (milliseconds)
   static const int cardDealDelay = 300;
   static const int cardDealStagger = 300;
   static const int cardFlipDuration = 400;
   static const int cardMoveDuration = 350;
 
-  // Visual effects
   static const double spotlightRadius = 180.0;
   static const double shadowBlur = 8.0;
   static const double textGlowBlur = 20.0;
@@ -61,19 +55,7 @@ class GameText {
 class CardDeck {
   static const List<String> suits = ['♠', '♥', '♦', '♣'];
   static const List<String> values = [
-    'A',
-    '2',
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    '10',
-    'J',
-    'Q',
-    'K',
+    'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K',
   ];
 
   static const int totalCards = 52;
@@ -92,15 +74,11 @@ class CardDeck {
 // ============================================================================
 
 class BlackjackGame extends FlameGame with TapCallbacks {
-  // Callback when game is complete
   final Function(GameResult)? onGameComplete;
-
-  // Bet amount (full time remaining)
   final int betAmount;
 
   BlackjackGame({this.onGameComplete, required this.betAmount});
 
-  // Game state
   final List<PlayingCard> dealerCards = [];
   final List<PlayingCard> playerCards = [];
   final List<PlayingCard> deck = [];
@@ -108,7 +86,6 @@ class BlackjackGame extends FlameGame with TapCallbacks {
   bool gameStarted = false;
   bool playerTurn = true;
 
-  // UI Components
   late TextComponent messageText;
   late TextComponent playerScoreText;
   late TextComponent dealerScoreText;
@@ -116,24 +93,16 @@ class BlackjackGame extends FlameGame with TapCallbacks {
   late TextComponent playerLabelText;
   late TextComponent deckCountText;
 
-  // Visual effects
   final List<Spotlight> spotlights = [];
 
-  // Computed positions
-  Vector2 get deckPosition => Vector2(
-    GameConstants.deckXRatio,
-    size.y * GameConstants.deckCenterYRatio,
-  );
+  Vector2 get deckPosition =>
+      Vector2(GameConstants.deckXRatio, size.y * GameConstants.deckCenterYRatio);
 
   Vector2 get dealerCardStart =>
       Vector2(size.x / 2 - 140, size.y * GameConstants.dealerCardsYRatio);
 
   Vector2 get playerCardStart =>
       Vector2(size.x / 2 - 140, size.y * GameConstants.playerCardsYRatio);
-
-  // ============================================================================
-  // INITIALIZATION
-  // ============================================================================
 
   @override
   Future<void> onLoad() async {
@@ -149,7 +118,6 @@ class BlackjackGame extends FlameGame with TapCallbacks {
       Vector2(size.x * 0.3, size.y - 100),
       Vector2(size.x * 0.7, size.y - 100),
     ];
-
     for (var position in positions) {
       final spotlight = Spotlight(position, GameConstants.spotlightRadius);
       spotlights.add(spotlight);
@@ -158,7 +126,6 @@ class BlackjackGame extends FlameGame with TapCallbacks {
   }
 
   void _initializeUI() {
-    // Labels
     dealerLabelText = _createLabel(
       GameText.dealer,
       Vector2(size.x / 2, size.y * GameConstants.dealerLabelYRatio),
@@ -171,7 +138,6 @@ class BlackjackGame extends FlameGame with TapCallbacks {
     );
     add(playerLabelText);
 
-    // Scores
     dealerScoreText = _createScoreText(
       Vector2(size.x / 2, size.y * GameConstants.dealerScoreYRatio),
     );
@@ -182,35 +148,33 @@ class BlackjackGame extends FlameGame with TapCallbacks {
     );
     add(playerScoreText);
 
-    // Deck counter
     deckCountText = TextComponent(
       text: '52',
       position: Vector2(30, size.y / 2 - 35),
       anchor: Anchor.centerLeft,
       textRenderer: TextPaint(
-        style: TextStyle(
-          color: Colors.white.withOpacity(0.3),
-          fontSize: 12,
-          fontWeight: FontWeight.w300,
+        style: const TextStyle(
+          color: Color(0xFF3D4558),
+          fontSize: 11,
+          fontWeight: FontWeight.w400,
         ),
       ),
     );
     add(deckCountText);
 
-    // Message
     messageText = TextComponent(
       text: GameText.tapToStart,
       position: Vector2(size.x / 2, size.y / 2),
       anchor: Anchor.center,
       textRenderer: TextPaint(
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 24,
+        style: const TextStyle(
+          color: Color(0xFFF0F2F8),
+          fontSize: 22,
           fontWeight: FontWeight.w300,
-          letterSpacing: 6,
+          letterSpacing: 7,
           shadows: [
             Shadow(
-              color: Colors.white.withOpacity(0.5),
+              color: Color(0x8D9B5CFF), // violet ~55% opacity
               offset: Offset.zero,
               blurRadius: GameConstants.textGlowBlur,
             ),
@@ -227,10 +191,10 @@ class BlackjackGame extends FlameGame with TapCallbacks {
       position: position,
       anchor: Anchor.center,
       textRenderer: TextPaint(
-        style: TextStyle(
-          color: Colors.white.withOpacity(0.4),
-          fontSize: 14,
-          fontWeight: FontWeight.w300,
+        style: const TextStyle(
+          color: Color(0xFF3D4558),
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
           letterSpacing: 4,
         ),
       ),
@@ -244,22 +208,17 @@ class BlackjackGame extends FlameGame with TapCallbacks {
       anchor: Anchor.center,
       textRenderer: TextPaint(
         style: const TextStyle(
-          color: Colors.white,
+          color: Color(0xFFF0F2F8),
           fontSize: 40,
-          fontWeight: FontWeight.w100,
+          fontWeight: FontWeight.w200,
           letterSpacing: 2,
         ),
       ),
     );
   }
 
-  // ============================================================================
-  // DECK MANAGEMENT
-  // ============================================================================
-
   List<PlayingCard> _createDeck() {
     final newDeck = <PlayingCard>[];
-
     for (var suit in CardDeck.suits) {
       for (var value in CardDeck.values) {
         newDeck.add(
@@ -267,33 +226,23 @@ class BlackjackGame extends FlameGame with TapCallbacks {
         );
       }
     }
-
     return newDeck;
   }
 
   void _reshuffleIfNeeded() {
     if (deck.isEmpty || deck.length < GameConstants.deckShuffleThreshold) {
-      print('🔄 Shuffling new deck (${deck.length} cards remaining)');
       deck.clear();
       deck.addAll(_createDeck());
       deck.shuffle();
-
       _showTemporaryMessage(GameText.newDeck, 1500);
       _updateDeckCounter();
-    } else {
-      print('♠️ Continuing with current deck (${deck.length} cards remaining)');
     }
   }
-
-  // ============================================================================
-  // GAME FLOW
-  // ============================================================================
 
   void startNewGame() {
     _clearPreviousHand();
     _reshuffleIfNeeded();
     _dealInitialCards();
-
     gameStarted = true;
     playerTurn = true;
     _setMessage('');
@@ -309,19 +258,15 @@ class BlackjackGame extends FlameGame with TapCallbacks {
 
   void _dealInitialCards() {
     final delays = [200, 500, 800, 1100];
-
     Future.delayed(Duration(milliseconds: delays[0]), () {
       _dealCard(playerCards, playerCardStart);
     });
-
     Future.delayed(Duration(milliseconds: delays[1]), () {
       _dealCard(dealerCards, dealerCardStart);
     });
-
     Future.delayed(Duration(milliseconds: delays[2]), () {
       _dealCard(playerCards, playerCardStart);
     });
-
     Future.delayed(Duration(milliseconds: delays[3]), () {
       _dealCard(dealerCards, dealerCardStart, faceDown: true);
       Future.delayed(const Duration(milliseconds: 400), _checkBlackjack);
@@ -334,66 +279,46 @@ class BlackjackGame extends FlameGame with TapCallbacks {
     bool faceDown = false,
   }) {
     if (deck.isEmpty) return;
-
     final card = deck.removeAt(0);
     final targetPos =
         startPos + Vector2(hand.length * GameConstants.cardSpacing, 0);
-
     card.position = deckPosition.clone();
     card.isFaceDown = faceDown;
     card.animateToPosition(targetPos);
-
     hand.add(card);
     add(card);
-
     _updateDeckCounter();
-
     Future.delayed(
       const Duration(milliseconds: GameConstants.cardDealDelay),
       _updateScores,
     );
   }
 
-  // ============================================================================
-  // PLAYER ACTIONS
-  // ============================================================================
-
   void hit() {
     if (!gameStarted || !playerTurn) return;
-
     _dealCard(playerCards, playerCardStart);
-
     Future.delayed(const Duration(milliseconds: 500), () {
       final score = _calculateScore(playerCards);
-
-      if (score > GameConstants.blackjackScore) {
-        _endGame(GameText.bust);
-      }
+      if (score > GameConstants.blackjackScore) _endGame(GameText.bust);
     });
   }
 
   void stand() {
     if (!gameStarted || !playerTurn) return;
-
     playerTurn = false;
     _revealDealerCard();
-
     Future.delayed(const Duration(milliseconds: 800), _dealerPlay);
   }
 
   void _revealDealerCard() {
     for (var card in dealerCards) {
-      if (card.isFaceDown) {
-        card.flipCard();
-      }
+      if (card.isFaceDown) card.flipCard();
     }
-
     Future.delayed(const Duration(milliseconds: 500), _updateScores);
   }
 
   void _dealerPlay() {
     final dealerScore = _calculateScore(dealerCards);
-
     if (dealerScore < GameConstants.dealerStandThreshold) {
       _dealCard(dealerCards, dealerCardStart);
       Future.delayed(const Duration(milliseconds: 800), _dealerPlay);
@@ -402,32 +327,18 @@ class BlackjackGame extends FlameGame with TapCallbacks {
     }
   }
 
-  // ============================================================================
-  // SCORING
-  // ============================================================================
-
   int _calculateScore(List<PlayingCard> hand) {
     int score = 0;
     int aces = 0;
-
     for (var card in hand) {
       if (card.isFaceDown) continue;
-
-      final value = CardDeck.getCardValue(card.value);
-
-      if (card.value == 'A') {
-        aces++;
-      }
-
-      score += value;
+      if (card.value == 'A') aces++;
+      score += CardDeck.getCardValue(card.value);
     }
-
-    // Adjust aces from 11 to 1 if needed
     while (score > GameConstants.blackjackScore && aces > 0) {
       score -= 10;
       aces--;
     }
-
     return score;
   }
 
@@ -440,7 +351,6 @@ class BlackjackGame extends FlameGame with TapCallbacks {
   void _determineWinner() {
     final playerScore = _calculateScore(playerCards);
     final dealerScore = _calculateScore(dealerCards);
-
     if (dealerScore > GameConstants.blackjackScore) {
       _endGame(GameText.youWin);
     } else if (playerScore > dealerScore) {
@@ -456,121 +366,88 @@ class BlackjackGame extends FlameGame with TapCallbacks {
     gameStarted = false;
     playerTurn = false;
     _setMessage(message);
-
-    // Calculate result and send to callback
     final won = message == GameText.youWin || message == GameText.blackjack;
     final push = message == GameText.push;
-
-    int timeChange;
-    if (push) {
-      timeChange = 0; // No change on push
-    } else if (won) {
-      // Win: 2x payout (get bet back + winnings)
-      timeChange = betAmount; // Net gain = bet amount
-    } else {
-      // Loss: Lose bet
-      timeChange = -betAmount;
-    }
-
+    final timeChange = push ? 0 : (won ? betAmount : -betAmount);
     final result = GameResult(
-      won: won || push, // Push counts as "won" for positive display
+      won: won || push,
       timeChange: timeChange,
       gameName: 'Blackjack',
       resultMessage: message,
     );
-
-    // Wait a bit before returning result so user can see the outcome
-    Future.delayed(const Duration(seconds: 2), () {
-      onGameComplete?.call(result);
-    });
+    Future.delayed(const Duration(seconds: 2), () => onGameComplete?.call(result));
   }
 
-  // ============================================================================
-  // UI UPDATES
-  // ============================================================================
-
-  void _setMessage(String text) {
-    messageText.text = text;
-  }
+  void _setMessage(String text) => messageText.text = text;
 
   void _showTemporaryMessage(String text, int durationMs) {
     _setMessage(text);
-    Future.delayed(Duration(milliseconds: durationMs), () {
-      _setMessage('');
-    });
+    Future.delayed(Duration(milliseconds: durationMs), () => _setMessage(''));
   }
 
   void _updateScores() {
-    final playerScore = _calculateScore(playerCards);
-    playerScoreText.text = '$playerScore';
-
-    final hasFaceDown = dealerCards.any((card) => card.isFaceDown);
-
+    playerScoreText.text = '${_calculateScore(playerCards)}';
+    final hasFaceDown = dealerCards.any((c) => c.isFaceDown);
     if (hasFaceDown && dealerCards.length > 1) {
       dealerScoreText.text = '?';
     } else {
-      final dealerScore = _calculateScore(dealerCards);
-      dealerScoreText.text = '$dealerScore';
+      dealerScoreText.text = '${_calculateScore(dealerCards)}';
     }
   }
 
   void _updateDeckCounter() {
     deckCountText.text = '${deck.length}';
-
     final isLow = deck.length < GameConstants.deckShuffleThreshold;
     deckCountText.textRenderer = TextPaint(
       style: TextStyle(
         color: isLow
-            ? Colors.orange.withOpacity(0.6)
-            : Colors.white.withOpacity(0.3),
-        fontSize: 12,
-        fontWeight: FontWeight.w300,
+            ? const Color(0xFFFFAB00).withValues(alpha: 0.7)
+            : const Color(0xFF3D4558),
+        fontSize: 11,
+        fontWeight: FontWeight.w400,
       ),
     );
   }
 
-  // ============================================================================
-  // INPUT HANDLING
-  // ============================================================================
-
   @override
   void onTapDown(TapDownEvent event) {
-    if (!gameStarted) {
-      startNewGame();
-    }
+    if (!gameStarted) startNewGame();
   }
-
-  // ============================================================================
-  // RENDERING
-  // ============================================================================
 
   @override
   void render(Canvas canvas) {
-    // Pure black background
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.x, size.y),
-      Paint()..color = Colors.black,
+      Paint()..color = const Color(0xFF020408),
     );
 
-    // Subtle grid texture
+    // Dot grid
     final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.03)
+      ..color = const Color(0xFF14161E).withValues(alpha: 0.6)
       ..strokeWidth = 1;
     const step = 32.0;
     for (double x = 0; x <= size.x; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.y), gridPaint);
-    }
-    for (double y = 0; y <= size.y; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.x, y), gridPaint);
+      for (double y = 0; y <= size.y; y += step) {
+        canvas.drawCircle(Offset(x, y), 0.8, gridPaint);
+      }
     }
 
-    // Top ambient red glow
+    // Violet top glow
     canvas.drawCircle(
-      Offset(size.x * 0.5, -35),
-      size.x * 0.6,
+      Offset(size.x * 0.5, -40),
+      size.x * 0.55,
       Paint()
-        ..color = const Color(0xFFEF4444).withOpacity(0.1)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30),
+        ..color = const Color(0xFF9B5CFF).withValues(alpha: 0.07)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 40),
+    );
+
+    // Mint bottom glow
+    canvas.drawCircle(
+      Offset(size.x * 0.5, size.y + 40),
+      size.x * 0.40,
+      Paint()
+        ..color = const Color(0xFF00D68F).withValues(alpha: 0.05)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 40),
     );
 
     // Vignette
@@ -579,12 +456,11 @@ class BlackjackGame extends FlameGame with TapCallbacks {
       radius: 1.0,
       colors: [
         Colors.transparent,
-        Colors.black.withOpacity(0.3),
-        Colors.black.withOpacity(0.6),
+        Colors.black.withValues(alpha: 0.25),
+        Colors.black.withValues(alpha: 0.55),
       ],
-      stops: const [0.0, 0.7, 1.0],
+      stops: const [0.0, 0.65, 1.0],
     );
-
     canvas.drawRect(
       Rect.fromLTWH(0, 0, size.x, size.y),
       Paint()
@@ -613,17 +489,15 @@ class Spotlight extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    final pulseFactor = 0.7 + (sin(_pulse * 2) * 0.3);
-
+    final pulseFactor = 0.6 + (sin(_pulse * 1.8) * 0.4);
     final gradient = RadialGradient(
       colors: [
-        Colors.white.withOpacity(0.15 * pulseFactor),
-        Colors.white.withOpacity(0.05 * pulseFactor),
+        Color.fromRGBO(155, 92, 255, 0.10 * pulseFactor),
+        Color.fromRGBO(155, 92, 255, 0.03 * pulseFactor),
         Colors.transparent,
       ],
       stops: const [0.0, 0.5, 1.0],
     );
-
     canvas.drawCircle(
       Offset.zero,
       radius,
@@ -657,10 +531,6 @@ class PlayingCard extends PositionComponent {
          anchor: Anchor.center,
        );
 
-  // ============================================================================
-  // ANIMATIONS
-  // ============================================================================
-
   void animateToPosition(Vector2 target) {
     final duration = GameConstants.cardMoveDuration / 1000.0;
     final startPos = position.clone();
@@ -670,12 +540,10 @@ class PlayingCard extends PositionComponent {
       elapsed += dt;
       final progress = (elapsed / duration).clamp(0.0, 1.0);
       final eased = Curves.easeOutCubic.transform(progress);
-
       position = Vector2(
         startPos.x + (target.x - startPos.x) * eased,
         startPos.y + (target.y - startPos.y) * eased,
       );
-
       if (progress < 1.0) {
         Future.delayed(const Duration(milliseconds: 16), () => animate(0.016));
       }
@@ -692,11 +560,7 @@ class PlayingCard extends PositionComponent {
     void animate(double dt) {
       elapsed += dt;
       _flipProgress = (elapsed / duration).clamp(0.0, 1.0);
-
-      if (_flipProgress >= 0.5 && isFaceDown) {
-        isFaceDown = false;
-      }
-
+      if (_flipProgress >= 0.5 && isFaceDown) isFaceDown = false;
       if (_flipProgress < 1.0) {
         Future.delayed(const Duration(milliseconds: 16), () => animate(0.016));
       } else {
@@ -708,24 +572,17 @@ class PlayingCard extends PositionComponent {
     animate(0);
   }
 
-  // ============================================================================
-  // RENDERING
-  // ============================================================================
-
   @override
   void render(Canvas canvas) {
     canvas.save();
-
     _applyFlipTransform(canvas);
     _renderShadow(canvas);
     _renderCardBackground(canvas);
-
     if (_shouldShowBack()) {
       _renderCardBack(canvas);
     } else {
       _renderCardFace(canvas);
     }
-
     canvas.restore();
   }
 
@@ -739,22 +596,17 @@ class PlayingCard extends PositionComponent {
   }
 
   void _renderShadow(Canvas canvas) {
-    final shadowPath = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(0, 4, size.x, size.y),
-          Radius.circular(GameConstants.cardRadius),
-        ),
-      );
-
     canvas.drawPath(
-      shadowPath,
-      Paint()
-        ..color = Colors.black.withOpacity(0.38)
-        ..maskFilter = MaskFilter.blur(
-          BlurStyle.normal,
-          GameConstants.shadowBlur,
+      Path()
+        ..addRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(0, 6, size.x, size.y),
+            Radius.circular(GameConstants.cardRadius),
+          ),
         ),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.45)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, GameConstants.shadowBlur),
     );
   }
 
@@ -763,37 +615,21 @@ class PlayingCard extends PositionComponent {
       Rect.fromLTWH(0, 0, size.x, size.y),
       Radius.circular(GameConstants.cardRadius),
     );
-
-    final faceGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [const Color(0xFFFFFFFF), const Color(0xFFF3F4F6)],
-    );
-
     canvas.drawRRect(
       cardRect,
       Paint()
-        ..shader = faceGradient.createShader(
-          Rect.fromLTWH(0, 0, size.x, size.y),
-        ),
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFFFFF), Color(0xFFF5F5F8)],
+        ).createShader(Rect.fromLTWH(0, 0, size.x, size.y)),
     );
     canvas.drawRRect(
       cardRect,
       Paint()
-        ..color = const Color(0xFFD1D5DB)
+        ..color = const Color(0xFFD8DAE0)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
-    );
-
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(4, 4, size.x - 8, size.y - 8),
-        Radius.circular(GameConstants.cardRadius - 2),
-      ),
-      Paint()
-        ..color = const Color(0xFFF9FAFB)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.7,
+        ..strokeWidth = 0.5,
     );
   }
 
@@ -806,73 +642,77 @@ class PlayingCard extends PositionComponent {
       Rect.fromLTWH(3, 3, size.x - 6, size.y - 6),
       Radius.circular(GameConstants.cardRadius - 2),
     );
-
-    final backGradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [const Color(0xFF0B0D10), const Color(0xFF1F2937)],
-    );
-
     canvas.drawRRect(
       backRect,
       Paint()
-        ..shader = backGradient.createShader(
-          Rect.fromLTWH(3, 3, size.x - 6, size.y - 6),
-        ),
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0A0C14), Color(0xFF060810)],
+        ).createShader(Rect.fromLTWH(3, 3, size.x - 6, size.y - 6)),
     );
-
-    _renderBackPattern(canvas);
+    _renderBackGrid(canvas);
     _renderBackLogo(canvas);
   }
 
-  void _renderBackPattern(Canvas canvas) {
-    final patternPaint = Paint()
-      ..color = Colors.white.withOpacity(0.12)
+  void _renderBackGrid(Canvas canvas) {
+    // Cyan grid
+    final gridPaint = Paint()
+      ..color = const Color(0xFF00F0FF).withValues(alpha: 0.08)
+      ..strokeWidth = 0.5;
+    const step = 10.0;
+    for (double x = 6; x <= size.x - 6; x += step) {
+      canvas.drawLine(Offset(x, 6), Offset(x, size.y - 6), gridPaint);
+    }
+    for (double y = 6; y <= size.y - 6; y += step) {
+      canvas.drawLine(Offset(6, y), Offset(size.x - 6, y), gridPaint);
+    }
+
+    // Nested frames
+    final framePaint = Paint()
+      ..color = const Color(0xFF00F0FF).withValues(alpha: 0.14)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 0.5;
-
-    for (int i = 0; i < 4; i++) {
-      final inset = 8.0 + (i * 6.0);
+    for (int i = 0; i < 3; i++) {
+      final inset = 6.0 + (i * 5.0);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromLTWH(inset, inset, size.x - inset * 2, size.y - inset * 2),
           const Radius.circular(4),
         ),
-        patternPaint,
+        framePaint,
       );
     }
 
-    final stripePaint = Paint()
-      ..color = const Color(0xFFEF4444).withOpacity(0.65)
-      ..strokeWidth = 1.2;
+    // Cyan stripe
     canvas.drawLine(
-      Offset(size.x * 0.2, size.y * 0.86),
-      Offset(size.x * 0.8, size.y * 0.86),
-      stripePaint,
+      Offset(size.x * 0.25, size.y * 0.88),
+      Offset(size.x * 0.75, size.y * 0.88),
+      Paint()
+        ..color = const Color(0xFF00F0FF).withValues(alpha: 0.55)
+        ..strokeWidth = 1.0,
     );
   }
 
   void _renderBackLogo(Canvas canvas) {
     final logoText = TextPainter(
-      text: TextSpan(
-        text: GameText.quit,
+      text: const TextSpan(
+        text: 'Q',
         style: TextStyle(
-          color: const Color(0xFFEF4444).withOpacity(0.92),
-          fontSize: 28,
+          color: Color(0xFF00F0FF),
+          fontSize: 30,
           fontWeight: FontWeight.w900,
-          letterSpacing: 1,
           shadows: [
             Shadow(
-              color: Colors.white.withOpacity(0.22),
+              color: Color(0xFF00F0FF),
               offset: Offset.zero,
-              blurRadius: 8,
+              blurRadius: 12,
             ),
           ],
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-
     logoText.paint(
       canvas,
       Offset(size.x / 2 - logoText.width / 2, size.y / 2 - logoText.height / 2),
@@ -881,8 +721,8 @@ class PlayingCard extends PositionComponent {
 
   void _renderCardFace(Canvas canvas) {
     final isRed = CardDeck.isRedSuit(suit);
-    final cardColor = isRed ? const Color(0xFFDC2626) : Colors.black;
-
+    final cardColor =
+        isRed ? const Color(0xFFDC2626) : const Color(0xFF0F1018);
     _renderCorner(canvas, cardColor);
     _renderRotatedCorner(canvas, cardColor);
     _renderCenterSuit(canvas, cardColor);
@@ -894,8 +734,8 @@ class PlayingCard extends PositionComponent {
         text: value,
         style: TextStyle(
           color: color,
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
+          fontSize: 17,
+          fontWeight: FontWeight.w800,
           height: 1.0,
         ),
       ),
@@ -907,8 +747,8 @@ class PlayingCard extends PositionComponent {
         text: suit,
         style: TextStyle(
           color: color,
-          fontSize: 15,
-          fontWeight: FontWeight.w400,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -931,15 +771,14 @@ class PlayingCard extends PositionComponent {
       text: TextSpan(
         text: suit,
         style: TextStyle(
-          color: color.withOpacity(0.13),
-          fontSize: 72,
+          color: color.withValues(alpha: 0.10),
+          fontSize: 68,
           fontWeight: FontWeight.w100,
           height: 1.0,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-
     centerSuit.paint(
       canvas,
       Offset(

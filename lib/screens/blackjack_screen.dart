@@ -34,7 +34,6 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
       isLoaded = true;
     });
 
-    // Initialize game with callback
     game = BlackjackGame(
       betAmount: remainingTime,
       onGameComplete: _onGameComplete,
@@ -42,7 +41,6 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
   }
 
   void _onGameComplete(GameResult result) {
-    // Return result to previous screen
     Navigator.pop(context, result);
   }
 
@@ -51,7 +49,12 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
     if (!isLoaded) {
       return const Scaffold(
         backgroundColor: NeonPalette.bg,
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: NeonPalette.mint,
+            strokeWidth: 1.5,
+          ),
+        ),
       );
     }
 
@@ -69,7 +72,6 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
               bettingTime: timeString,
               onBack: () => Navigator.of(context).pop(),
             ),
-
             Expanded(child: GameWidget(game: game)),
             _buildBottomControls(),
           ],
@@ -80,36 +82,45 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
 
   Widget _buildBottomControls() {
     return Container(
-      color: Colors.black.withOpacity(0.75),
-      padding: const EdgeInsets.fromLTRB(24, 14, 24, 24),
+      decoration: BoxDecoration(
+        color: NeonPalette.bg,
+        border: Border(
+          top: BorderSide(color: NeonPalette.border, width: 0.5),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
       child: Row(
         children: [
           Expanded(
             child: NeonButton(
               onPressed: () => game.hit(),
-              color: NeonPalette.surfaceSoft,
-              textColor: Colors.white,
-              borderColor: NeonPalette.border,
-              glowOpacity: 0.0,
+              color: NeonPalette.mint.withValues(alpha: 0.07),
+              textColor: NeonPalette.mint,
+              borderColor: NeonPalette.mint.withValues(alpha: 0.35),
+              glowColor: NeonPalette.mint,
+              glowOpacity: 0.20,
               padding: const EdgeInsets.symmetric(vertical: 18),
-              borderRadius: 20,
-              fontSize: 14,
-              letterSpacing: 0.8,
+              borderRadius: 14,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2.5,
               text: 'HIT',
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: NeonButton(
               onPressed: () => game.stand(),
-              color: NeonPalette.surfaceSoft,
-              textColor: Colors.white,
-              borderColor: NeonPalette.border,
-              glowOpacity: 0.0,
+              color: NeonPalette.rose.withValues(alpha: 0.07),
+              textColor: NeonPalette.rose,
+              borderColor: NeonPalette.rose.withValues(alpha: 0.35),
+              glowColor: NeonPalette.rose,
+              glowOpacity: 0.18,
               padding: const EdgeInsets.symmetric(vertical: 18),
-              borderRadius: 20,
-              fontSize: 14,
-              letterSpacing: 0.8,
+              borderRadius: 14,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2.5,
               text: 'STAND',
             ),
           ),

@@ -16,38 +16,18 @@ class RouletteScreen extends StatefulWidget {
   State<RouletteScreen> createState() => _RouletteScreenState();
 }
 
-class _RouletteScreenState extends State<RouletteScreen>
-    with TickerProviderStateMixin {
+class _RouletteScreenState extends State<RouletteScreen> {
   late RouletteGame _game;
   int remainingTime = 0;
   bool isLoaded = false;
   BetType? selectedBet;
-
-  // Animation controller for selected border
-  late AnimationController _borderController;
-  late Animation<double> _borderAnimation;
+  int? _resultNumber;
+  bool? _resultWon;
 
   @override
   void initState() {
     super.initState();
-
-    // Initialize border animation
-    _borderController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _borderAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _borderController, curve: Curves.easeInOut),
-    );
-
     _loadRemainingTime();
-  }
-
-  @override
-  void dispose() {
-    _borderController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadRemainingTime() async {
@@ -63,19 +43,27 @@ class _RouletteScreenState extends State<RouletteScreen>
       betAmount: remainingTime,
       onGameComplete: _onGameComplete,
       onBetChanged: _onBetChanged,
+      onResultReady: _onResultReady,
     );
   }
 
-  /// Called when bet selection changes
   void _onBetChanged(BetType? newBet) {
     setState(() {
       selectedBet = newBet;
+      _resultNumber = null;
+      _resultWon = null;
     });
   }
 
-  /// Called when a game round is complete
+  void _onResultReady(int number, bool won) {
+    if (!mounted) return;
+    setState(() {
+      _resultNumber = number;
+      _resultWon = won;
+    });
+  }
+
   void _onGameComplete(GameResult result) {
-    // Pop back to previous screen with the result
     Navigator.pop(context, result);
   }
 
@@ -84,9 +72,15 @@ class _RouletteScreenState extends State<RouletteScreen>
     if (!isLoaded) {
       return const Scaffold(
         backgroundColor: NeonPalette.bg,
-        body: Center(child: CircularProgressIndicator()),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: NeonPalette.rose,
+            strokeWidth: 1.5,
+          ),
+        ),
       );
     }
+
     final minutes = remainingTime ~/ 60;
     final seconds = remainingTime % 60;
     final timeString = '$minutes:${seconds.toString().padLeft(2, '0')}';
@@ -101,14 +95,8 @@ class _RouletteScreenState extends State<RouletteScreen>
               bettingTime: timeString,
               onBack: () => Navigator.of(context).pop(),
             ),
-
-            // Game canvas (roulette wheel)
             Expanded(flex: 3, child: GameWidget(game: _game)),
-
-            // Messages area (between wheel and buttons)
             _buildMessagesArea(),
-
-            // Bottom controls
             _buildBottomControls(),
           ],
         ),
@@ -116,21 +104,75 @@ class _RouletteScreenState extends State<RouletteScreen>
     );
   }
 
+  Color _getResultColor(int number) {
+    if (number == 0) return const Color(0xFF00FF88);
+    return RouletteNumbers.isBlack(number)
+        ? const Color(0xFF9AAABF)
+        : NeonPalette.rose;
+  }
+
   Widget _buildMessagesArea() {
-    return Container(
-      height: 60,
-      alignment: Alignment.center,
+    if (_resultNumber != null) {
+      final number = _resultNumber!;
+      final won = _resultWon ?? false;
+      final numColor = _getResultColor(number);
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$number',
+              style: TextStyle(
+                color: numColor,
+                fontSize: 60,
+                fontWeight: FontWeight.w200,
+                letterSpacing: 4,
+                shadows: [
+                  Shadow(
+                    color: numColor.withValues(alpha: 0.80),
+                    blurRadius: 24,
+                  ),
+                  Shadow(
+                    color: numColor.withValues(alpha: 0.35),
+                    blurRadius: 48,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              won ? 'YOU WIN' : 'YOU LOSE',
+              style: TextStyle(
+                color: won ? NeonPalette.mint : NeonPalette.rose,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 5,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 52,
       child: StreamBuilder<String>(
         stream: _game.messageStream,
         initialData: '',
         builder: (context, snapshot) {
-          return Text(
-            snapshot.data ?? '',
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w300,
-              letterSpacing: 4,
-              color: Colors.white,
+          final msg = snapshot.data ?? '';
+          if (msg.isEmpty) return const SizedBox.shrink();
+          return Center(
+            child: Text(
+              msg,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w300,
+                letterSpacing: 4,
+                color: NeonPalette.textMuted,
+              ),
             ),
           );
         },
@@ -140,56 +182,56 @@ class _RouletteScreenState extends State<RouletteScreen>
 
   Widget _buildBottomControls() {
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          color: Colors.black.withOpacity(0.75),
-          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: NeonPalette.bg.withValues(alpha: 0.90),
+            border: Border(
+              top: BorderSide(color: NeonPalette.border, width: 0.5),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Bet buttons grid
               _buildBetButtons(),
-              const SizedBox(height: 16),
-
-              // Action buttons
+              const SizedBox(height: 12),
               Row(
                 children: [
-                  // Clear bet
                   Expanded(
                     child: NeonButton(
                       onPressed: () {
                         _game.clearBet();
-                        setState(() {
-                          selectedBet = null;
-                        });
+                        setState(() => selectedBet = null);
                       },
-                      color: NeonPalette.surfaceSoft,
+                      color: Colors.transparent,
+                      textColor: NeonPalette.textMuted,
                       borderColor: NeonPalette.border,
                       glowOpacity: 0.0,
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      borderRadius: 20,
-                      fontSize: 14,
-                      letterSpacing: 0.8,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      borderRadius: 12,
+                      fontSize: 12,
+                      letterSpacing: 1.5,
                       text: 'CLEAR',
                     ),
                   ),
-                  const SizedBox(width: 16),
-
-                  // Spin
+                  const SizedBox(width: 12),
                   Expanded(
                     flex: 2,
                     child: NeonButton(
                       onPressed: () => _game.spin(),
-                      color: NeonPalette.surfaceSoft,
-                      textColor: Colors.white,
-                      borderColor: NeonPalette.border,
-                      glowOpacity: 0.0,
-                      padding: const EdgeInsets.symmetric(vertical: 20),
-                      borderRadius: 20,
-                      fontSize: 14,
-                      letterSpacing: 0.8,
+                      color: NeonPalette.rose.withValues(alpha: 0.08),
+                      textColor: NeonPalette.rose,
+                      borderColor: NeonPalette.rose.withValues(alpha: 0.40),
+                      glowColor: NeonPalette.rose,
+                      glowOpacity: 0.25,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      borderRadius: 12,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2.5,
                       text: 'SPIN',
                     ),
                   ),
@@ -207,32 +249,26 @@ class _RouletteScreenState extends State<RouletteScreen>
       children: [
         Row(
           children: [
-            // Red (Visual Red -> Logic White)
             _buildBetButton(BetType.white(), NeonPalette.rose),
-            const SizedBox(width: 8),
-            // Black
-            _buildBetButton(BetType.black(), NeonPalette.surfaceSoft),
-            const SizedBox(width: 8),
-            // Green (0)
+            const SizedBox(width: 6),
+            _buildBetButton(BetType.black(), const Color(0xFF6B7280)),
+            const SizedBox(width: 6),
             _buildBetButton(BetType.straight(0), NeonPalette.mint),
           ],
         ),
-        const SizedBox(height: 8),
-
+        const SizedBox(height: 6),
         Row(
           children: [
             _buildBetButton(BetType.even()),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             _buildBetButton(BetType.odd()),
           ],
         ),
-        const SizedBox(height: 8),
-
-        // Third row: Low, High
+        const SizedBox(height: 6),
         Row(
           children: [
             _buildBetButton(BetType.low()),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             _buildBetButton(BetType.high()),
           ],
         ),
@@ -240,28 +276,26 @@ class _RouletteScreenState extends State<RouletteScreen>
     );
   }
 
-  Widget _buildBetButton(BetType betType, [Color? color]) {
-    final backgroundColor = NeonPalette.surfaceSoft;
+  Widget _buildBetButton(BetType betType, [Color? accentColor]) {
+    final accent = accentColor ?? NeonPalette.textMuted;
+    final isSelected = selectedBet?.name == betType.name;
 
     return Expanded(
-      child: AnimatedBuilder(
-        animation: _borderAnimation,
-        builder: (context, child) {
-          final isSelected = selectedBet?.name == betType.name;
-          return NeonButton(
-            onPressed: () => _game.placeBet(betType),
-            color: backgroundColor,
-            textColor: Colors.white,
-            borderColor: isSelected ? const Color(0xFFEF4444) : NeonPalette.border,
-            glowOpacity: isSelected ? (_borderAnimation.value * 0.22) : 0.0,
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-            borderRadius: 20,
-            fontSize: 12,
-            letterSpacing: 0.5,
-            text:
-                '${_displayBetName(betType).toUpperCase()}  x${betType.payout + 1}',
-          );
-        },
+      child: NeonButton(
+        onPressed: () => _game.placeBet(betType),
+        color: isSelected
+            ? accent.withValues(alpha: 0.20)
+            : NeonPalette.surfaceSoft,
+        textColor: isSelected ? accent : NeonPalette.textMuted,
+        borderColor: isSelected ? accent : NeonPalette.border,
+        glowColor: accent,
+        glowOpacity: isSelected ? 0.45 : 0.0,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        borderRadius: 10,
+        fontSize: 11,
+        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+        letterSpacing: 0.5,
+        text: '${_displayBetName(betType).toUpperCase()}  ×${betType.payout + 1}',
       ),
     );
   }
