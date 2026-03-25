@@ -9,8 +9,6 @@ import android.content.BroadcastReceiver
 import android.content.IntentFilter
 import android.os.*
 import androidx.core.app.NotificationCompat
-import java.util.*
-import kotlin.concurrent.timer
 import kotlin.math.max
 import android.util.Log
 import android.content.SharedPreferences
@@ -19,20 +17,69 @@ import org.json.JSONArray
 
 class MonitoringService : Service() {
 
-    private var monitoringTimer: Timer? = null
     private val handler = Handler(Looper.getMainLooper())
     private var currentlyBlockedApp: String? = null
     private var lastKnownForegroundApp: String? = null
+
+    // Handler-based monitoring loop (replaces Timer)
+    private var isMonitoring = false
+    private val POLL_INTERVAL_MS = 1000L          // Fallback poll every 1s (only when screen on)
+    private val TIME_TRACKING_INTERVAL_MS = 1000L  // Time tracking update interval
 
     // Time tracking state
     private var sessionStartTime: Long? = null
     private var lastSaveTime: Long = 0
     private val SAVE_INTERVAL_MS = 1000L // Save every 1 second for better accuracy
-    
+
     // Screen state tracking
     private var isScreenOn: Boolean = true
     private var screenStateReceiver: BroadcastReceiver? = null
     private var lastResetCheckTimestamp: Long = 0L
+
+    // Handler-based monitoring runnable
+    private val monitorRunnable = object : Runnable {
+        override fun run() {
+            if (!isMonitoring || !isScreenOn) return
+
+            try {
+                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                val now = System.currentTimeMillis()
+
+                // Throttled reset check (once per second)
+                if (now - lastResetCheckTimestamp >= 1000L) {
+                    lastResetCheckTimestamp = now
+                    val didReset = checkAndPerformReset(prefs)
+                    if (didReset) {
+                        stopTimeTracking()
+                        currentlyBlockedApp = null
+                        lastKnownForegroundApp = null
+                        val currentApp = getCurrentForegroundApp()
+                        if (currentApp != null) {
+                            handleForegroundApp(currentApp)
+                        }
+                        updateNotification()
+                    }
+                }
+
+                // Fallback: poll UsageStatsManager for app changes
+                // (Primary detection is via AccessibilityService push events)
+                val foregroundApp = getCurrentForegroundApp()
+                if (foregroundApp != null && foregroundApp != lastKnownForegroundApp) {
+                    lastKnownForegroundApp = foregroundApp
+                    handleForegroundApp(foregroundApp)
+                }
+
+                // Continuously update time tracking if active
+                updateTimeTracking()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Monitoring error", e)
+            }
+
+            // Schedule next run
+            handler.postDelayed(this, if (sessionStartTime != null) TIME_TRACKING_INTERVAL_MS else POLL_INTERVAL_MS)
+        }
+    }
 
     companion object {
         private const val TAG = "MonitoringService"
@@ -109,19 +156,20 @@ class MonitoringService : Service() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_OFF -> {
-                        Log.d(TAG, "📴 Screen turned OFF - pausing time tracking")
+                        Log.d(TAG, "📴 Screen turned OFF - pausing monitoring")
                         isScreenOn = false
-                        
-                        // Save current session and stop tracking
                         stopTimeTracking()
+                        // Stop the Handler loop entirely — no CPU usage while screen off
+                        handler.removeCallbacks(monitorRunnable)
                     }
                     Intent.ACTION_SCREEN_ON -> {
-                        Log.d(TAG, "📱 Screen turned ON - will check app after unlock completes")
+                        Log.d(TAG, "📱 Screen turned ON - resuming monitoring loop")
                         isScreenOn = true
-                        
-                        // Don't check immediately - let the user unlock first
-                        // We'll rely on the normal monitoring loop to detect when they
-                        // actually get past the lock screen to the app
+                        // Resume the Handler loop
+                        if (isMonitoring) {
+                            handler.removeCallbacks(monitorRunnable) // Prevent doubles
+                            handler.post(monitorRunnable)
+                        }
                     }
                     Intent.ACTION_USER_PRESENT -> {
                         // This fires AFTER user unlocks (PIN/pattern/fingerprint/swipe)
@@ -198,6 +246,12 @@ class MonitoringService : Service() {
                 Log.d(TAG, "⏱️ Timer config update received: $newLimit seconds")
                 updateNotification()
             }
+            "foreground_app_changed" -> {
+                val pkg = intent?.getStringExtra("package_name")
+                if (pkg != null) {
+                    handleAccessibilityAppChange(pkg)
+                }
+            }
             "com.example.quit.URL_VISITED" -> {
                 val domain = intent?.getStringExtra("domain")
                 val browserPackage = intent?.getStringExtra("browser_package")
@@ -242,41 +296,26 @@ class MonitoringService : Service() {
     }
 
     private fun startMonitoring() {
-        monitoringTimer?.cancel()
-        monitoringTimer = timer(period = 500) {
-            try {
-                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                val now = System.currentTimeMillis()
-                if (now - lastResetCheckTimestamp >= 1000L) {
-                    lastResetCheckTimestamp = now
-                    val didReset = checkAndPerformReset(prefs)
-                    if (didReset) {
-                        handler.post {
-                            stopTimeTracking()
-                            currentlyBlockedApp = null
-                            lastKnownForegroundApp = null
-                            val currentApp = getCurrentForegroundApp()
-                            if (currentApp != null) {
-                                handleForegroundApp(currentApp)
-                            }
-                            updateNotification()
-                        }
-                    }
-                }
+        if (isMonitoring) return
+        isMonitoring = true
+        handler.post(monitorRunnable)
+        Log.d(TAG, "Started handler-based monitoring loop")
+    }
 
-                // Check for foreground app changes
-                val foregroundApp = getCurrentForegroundApp()
-                if (foregroundApp != null && foregroundApp != lastKnownForegroundApp) {
-                    lastKnownForegroundApp = foregroundApp
-                    handler.post { handleForegroundApp(foregroundApp) }
-                }
-                
-                // Continuously update time tracking if active
-                handler.post { updateTimeTracking() }
-                
-            } catch (e: Exception) {
-                Log.e(TAG, "❌ Monitoring error", e)
-            }
+    private fun stopMonitoring() {
+        isMonitoring = false
+        handler.removeCallbacks(monitorRunnable)
+        Log.d(TAG, "Stopped monitoring loop")
+    }
+
+    /**
+     * Called by AccessibilityService via intent for instant foreground app detection.
+     * This is the primary detection path — the Handler poll loop is just a fallback.
+     */
+    private fun handleAccessibilityAppChange(packageName: String) {
+        if (packageName != lastKnownForegroundApp) {
+            lastKnownForegroundApp = packageName
+            handleForegroundApp(packageName)
         }
     }
 
@@ -701,7 +740,7 @@ class MonitoringService : Service() {
 
     override fun onDestroy() {
         stopTimeTracking()
-        monitoringTimer?.cancel()
+        stopMonitoring()
         currentlyBlockedApp = null
         
         // Unregister screen state receiver

@@ -13,17 +13,28 @@ class BrowserAccessibilityService : AccessibilityService() {
         const val ACTION_URL_VISITED = "com.example.quit.URL_VISITED"
     }
 
+    private var lastNotifiedPackage: String? = null
+
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        val packageName = event.packageName?.toString() ?: return
+
+        // Notify MonitoringService of ALL foreground app changes (instant detection)
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            // Only notify on actual app changes to avoid flooding
+            if (packageName != lastNotifiedPackage) {
+                lastNotifiedPackage = packageName
+                notifyForegroundAppChanged(packageName)
+            }
+        }
+
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            
-            val packageName = event.packageName?.toString() ?: return
-            
-            // Focus on common browsers
+
+            // Browser URL detection
             if (isBrowser(packageName)) {
                 val rootNode = rootInActiveWindow ?: return
                 val url = findUrlInNodes(rootNode, packageName)
-                
+
                 if (url != null) {
                     val domain = getDomain(url)
                     Log.d(TAG, "🌐 URL Detected: $url (Domain: $domain) in $packageName")
@@ -124,6 +135,22 @@ class BrowserAccessibilityService : AccessibilityService() {
             putExtra("browser_package", browserPackage)
         }
         startService(intent)
+    }
+
+    private fun notifyForegroundAppChanged(packageName: String) {
+        try {
+            val intent = Intent(this, MonitoringService::class.java).apply {
+                action = "foreground_app_changed"
+                putExtra("package_name", packageName)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to notify foreground app change", e)
+        }
     }
 
     override fun onInterrupt() {}
