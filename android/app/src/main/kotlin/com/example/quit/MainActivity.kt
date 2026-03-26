@@ -58,6 +58,27 @@ class MainActivity : FlutterActivity() {
                     updateTimerConfig(dailyLimitSeconds)
                     result.success(true)
                 }
+                "debugOverrideResetInterval" -> {
+                    val seconds = call.argument<Int>("seconds") ?: 86400
+                    val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                    prefs.edit().putInt("flutter.reset_interval_seconds", seconds).apply()
+                    Log.d(TAG, "🧪 DEBUG: Reset interval overridden to ${seconds}s")
+                    result.success(true)
+                }
+                "debugResetTimerNow" -> {
+                    val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                    val dailyLimitSeconds = try { prefs.getInt("flutter.daily_limit_seconds", 0) } catch (e: ClassCastException) { prefs.getLong("flutter.daily_limit_seconds", 0).toInt() }
+                    prefs.edit()
+                        .putInt("flutter.remaining_seconds", dailyLimitSeconds)
+                        .putInt("flutter.used_today_seconds", 0)
+                        .remove("flutter.timer_last_reset")
+                        .remove("flutter.daily_time_ran_out_timestamp")
+                        .remove("flutter.timer_first_choice_made")
+                        .remove("flutter.last_bonus_time")
+                        .apply()
+                    Log.d(TAG, "🧪 DEBUG: Timer forcefully reset. Restored ${dailyLimitSeconds}s")
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }

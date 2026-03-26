@@ -14,12 +14,14 @@ import android.util.Log
 import android.content.SharedPreferences
 import android.net.Uri
 import org.json.JSONArray
+import android.os.PowerManager
 
 class MonitoringService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var currentlyBlockedApp: String? = null
     private var lastKnownForegroundApp: String? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // Handler-based monitoring loop (replaces Timer)
     private var isMonitoring = false
@@ -85,7 +87,9 @@ class MonitoringService : Service() {
         private const val TAG = "MonitoringService"
         private const val NOTIFICATION_ID = 100
         private const val CHANNEL_ID = "monitoring_channel"
-        
+        private const val WATCHDOG_REQUEST_CODE = 9999
+        private const val WATCHDOG_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
+
         // Static caches to survive service re-creation
         private var cachedBlockedApps: MutableList<String> = mutableListOf()
         private var cachedBlockedWebsites: MutableList<String> = mutableListOf()
@@ -110,9 +114,51 @@ class MonitoringService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
         registerScreenStateReceiver()
-        
-        
+        acquireWakeLock()
+        scheduleWatchdog()
         startMonitoring()
+    }
+
+    private fun acquireWakeLock() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "QUIT::MonitoringWakeLock"
+        ).apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+        Log.d(TAG, "🔋 Wake lock acquired")
+    }
+
+    private fun scheduleWatchdog() {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(this, ServiceWatchdog::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, WATCHDOG_REQUEST_CODE, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        // Use inexact repeating to be battery-friendly but still reliable
+        alarmManager.setInexactRepeating(
+            AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            SystemClock.elapsedRealtime() + WATCHDOG_INTERVAL_MS,
+            WATCHDOG_INTERVAL_MS,
+            pendingIntent
+        )
+        Log.d(TAG, "⏰ Watchdog alarm scheduled every ${WATCHDOG_INTERVAL_MS / 60000} minutes")
+    }
+
+    private fun cancelWatchdog() {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val intent = Intent(this, ServiceWatchdog::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            this, WATCHDOG_REQUEST_CODE, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE
+        )
+        pendingIntent?.let {
+            alarmManager.cancel(it)
+            Log.d(TAG, "⏰ Watchdog alarm cancelled")
+        }
     }
 
     private fun hydrateCachesFromPrefs(prefs: SharedPreferences) {
@@ -742,7 +788,16 @@ class MonitoringService : Service() {
         stopTimeTracking()
         stopMonitoring()
         currentlyBlockedApp = null
-        
+
+        // Release wake lock
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+                Log.d(TAG, "🔋 Wake lock released")
+            }
+        }
+        wakeLock = null
+
         // Unregister screen state receiver
         screenStateReceiver?.let {
             try {
@@ -758,6 +813,7 @@ class MonitoringService : Service() {
             getFlutterStringList(prefs, "blocked_websites").isNotEmpty()
 
         if (shouldRestart) {
+            // Keep watchdog alive - it will restart us if this direct restart fails
             try {
                 val restartIntent = Intent(applicationContext, MonitoringService::class.java).apply {
                     putExtra("action", "service_restart")
@@ -769,10 +825,13 @@ class MonitoringService : Service() {
                 }
                 Log.w(TAG, "♻️ Monitoring service destroyed; requested auto-restart")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Failed to auto-restart monitoring service", e)
+                Log.e(TAG, "❌ Failed to auto-restart monitoring service (watchdog will retry)", e)
             }
+        } else {
+            // No blocked apps - cancel watchdog too
+            cancelWatchdog()
         }
-        
+
         super.onDestroy()
     }
 }
