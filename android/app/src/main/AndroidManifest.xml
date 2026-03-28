@@ -5,10 +5,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     
     <application
@@ -43,11 +42,16 @@
             android:launchMode="singleTask" />
         
         <!-- App Monitoring Service -->
+        <!-- specialUse avoids the Android 14 dataSync 6-hour forced-stop limit -->
         <service
             android:name=".MonitoringService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Monitors foreground apps to enforce the user's own blocking rules." />
+        </service>
         
         <!-- Browser Accessibility Service -->
         <service
@@ -64,23 +68,18 @@
         </service>
         
         
-        <!-- Boot Receiver - restarts service after device reboot -->
+        <!-- Watchdog + Boot Receiver: restarts service after reboot or AlarmManager ping -->
         <receiver
-            android:name=".BootReceiver"
+            android:name=".ServiceWatchdogReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.example.quit.WATCHDOG" />
             </intent-filter>
         </receiver>
-
-        <!-- Watchdog Receiver - restarts service if killed -->
-        <receiver
-            android:name=".ServiceWatchdog"
-            android:enabled="true"
-            android:exported="false" />
 
         <!-- Flutter Embedding -->
         <meta-data

@@ -41,6 +41,7 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
   }
 
   void _onGameComplete(GameResult result) {
+    if (!mounted) return;
     Navigator.pop(context, result);
   }
 

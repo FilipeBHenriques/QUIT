@@ -15,14 +15,16 @@ import android.content.SharedPreferences
 import android.net.Uri
 import org.json.JSONArray
 import android.os.PowerManager
+import android.os.SystemClock
+import android.util.Base64
+import java.io.ByteArrayInputStream
+import java.io.ObjectInputStream
 
 class MonitoringService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var currentlyBlockedApp: String? = null
     private var lastKnownForegroundApp: String? = null
-    private var wakeLock: PowerManager.WakeLock? = null
-
     // Handler-based monitoring loop (replaces Timer)
     private var isMonitoring = false
     private val POLL_INTERVAL_MS = 1000L          // Fallback poll every 1s (only when screen on)
@@ -88,7 +90,7 @@ class MonitoringService : Service() {
         private const val NOTIFICATION_ID = 100
         private const val CHANNEL_ID = "monitoring_channel"
         private const val WATCHDOG_REQUEST_CODE = 9999
-        private const val WATCHDOG_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
+        private const val WATCHDOG_INTERVAL_MS = 15 * 60 * 1000L // 15 minutes
 
         // Static caches to survive service re-creation
         private var cachedBlockedApps: MutableList<String> = mutableListOf()
@@ -114,26 +116,13 @@ class MonitoringService : Service() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, createNotification())
         registerScreenStateReceiver()
-        acquireWakeLock()
         scheduleWatchdog()
         startMonitoring()
     }
 
-    private fun acquireWakeLock() {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "QUIT::MonitoringWakeLock"
-        ).apply {
-            setReferenceCounted(false)
-            acquire()
-        }
-        Log.d(TAG, "🔋 Wake lock acquired")
-    }
-
     private fun scheduleWatchdog() {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(this, ServiceWatchdog::class.java)
+        val intent = Intent(this, ServiceWatchdogReceiver::class.java)
         val pendingIntent = PendingIntent.getBroadcast(
             this, WATCHDOG_REQUEST_CODE, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -150,7 +139,7 @@ class MonitoringService : Service() {
 
     private fun cancelWatchdog() {
         val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(this, ServiceWatchdog::class.java)
+        val intent = Intent(this, ServiceWatchdogReceiver::class.java)
         val pendingIntent = PendingIntent.getBroadcast(
             this, WATCHDOG_REQUEST_CODE, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE
@@ -165,11 +154,15 @@ class MonitoringService : Service() {
         val storedApps = getFlutterStringList(prefs, "blocked_apps")
         val storedWebsites = getFlutterStringList(prefs, "blocked_websites")
 
-        cachedBlockedApps.clear()
-        cachedBlockedApps.addAll(storedApps)
-
-        cachedBlockedWebsites.clear()
-        cachedBlockedWebsites.addAll(storedWebsites)
+        // Only overwrite cache if we actually got data — never wipe existing state on a failed read
+        if (storedApps.isNotEmpty()) {
+            cachedBlockedApps.clear()
+            cachedBlockedApps.addAll(storedApps)
+        }
+        if (storedWebsites.isNotEmpty()) {
+            cachedBlockedWebsites.clear()
+            cachedBlockedWebsites.addAll(storedWebsites)
+        }
 
         Log.d(
             TAG,
@@ -179,21 +172,53 @@ class MonitoringService : Service() {
 
     private fun getFlutterStringList(prefs: SharedPreferences, baseKey: String): List<String> {
         val key = "flutter.$baseKey"
+        // shared_preferences_android v2.4+ encodes lists with this base64 prefix.
+        // JSON-encoded lists append "!" to the prefix.
+        val LIST_PREFIX = "VGhpcyBpcyB0aGUgcHJlZml4IGZvciBhIGxpc3Qu"
+        val JSON_LIST_PREFIX = "$LIST_PREFIX!"
 
-        try {
-            prefs.getStringSet(key, null)?.let { return it.toList() }
-        } catch (_: Exception) {
-            // Fallback to encoded string parsing below
+        val raw = prefs.getString(key, null) ?: run {
+            Log.d(TAG, "📦 $baseKey: key 'flutter.$baseKey' not found in FlutterSharedPreferences")
+            return emptyList()
         }
 
-        val raw = prefs.getString(key, null) ?: return emptyList()
-        val normalized = raw.removePrefix("!flutter_list!")
+        Log.d(TAG, "📦 $baseKey prefix_chars=${raw.take(50)}")
 
-        return try {
-            val array = JSONArray(normalized)
-            List(array.length()) { index -> array.optString(index) }.filter { it.isNotBlank() }
-        } catch (_: Exception) {
-            emptyList()
+        return when {
+            raw.startsWith(JSON_LIST_PREFIX) -> {
+                // JSON-encoded list: prefix + ["item1","item2"]
+                val json = raw.removePrefix(JSON_LIST_PREFIX)
+                try {
+                    val array = JSONArray(json)
+                    List(array.length()) { array.optString(it) }.filter { it.isNotBlank() }
+                } catch (e: Exception) {
+                    Log.e(TAG, "📦 $baseKey JSON parse failed: ${e.message}")
+                    emptyList()
+                }
+            }
+            raw.startsWith(LIST_PREFIX) -> {
+                // Platform-encoded: base64(Java-serialized List<String>)
+                try {
+                    val bytes = Base64.decode(raw.removePrefix(LIST_PREFIX), Base64.DEFAULT)
+                    val stream = ObjectInputStream(ByteArrayInputStream(bytes))
+                    @Suppress("UNCHECKED_CAST")
+                    (stream.readObject() as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                } catch (e: Exception) {
+                    Log.e(TAG, "📦 $baseKey base64 decode failed: ${e.message}")
+                    emptyList()
+                }
+            }
+            raw.startsWith("!flutter_list!") -> {
+                // Very old format fallback
+                try {
+                    val array = JSONArray(raw.removePrefix("!flutter_list!"))
+                    List(array.length()) { array.optString(it) }.filter { it.isNotBlank() }
+                } catch (e: Exception) { emptyList() }
+            }
+            else -> {
+                Log.w(TAG, "📦 $baseKey unknown format, raw=${raw.take(80)}")
+                emptyList()
+            }
         }
     }
     
@@ -330,7 +355,7 @@ class MonitoringService : Service() {
 
                 if (intent?.getStringArrayListExtra("blocked_apps") == null &&
                     intent?.getStringArrayListExtra("blocked_websites") == null &&
-                    (cachedBlockedApps.isEmpty() || cachedBlockedWebsites.isEmpty())
+                    cachedBlockedApps.isEmpty()
                 ) {
                     val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                     hydrateCachesFromPrefs(prefs)
@@ -788,15 +813,6 @@ class MonitoringService : Service() {
         stopTimeTracking()
         stopMonitoring()
         currentlyBlockedApp = null
-
-        // Release wake lock
-        wakeLock?.let {
-            if (it.isHeld) {
-                it.release()
-                Log.d(TAG, "🔋 Wake lock released")
-            }
-        }
-        wakeLock = null
 
         // Unregister screen state receiver
         screenStateReceiver?.let {

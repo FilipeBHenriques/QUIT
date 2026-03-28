@@ -59,6 +59,7 @@ class _MinesScreenState extends State<MinesScreen>
   }
 
   void _onGameComplete(GameResult result) {
+    if (!mounted) return;
     Navigator.pop(context, result);
   }
 

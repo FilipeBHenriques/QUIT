@@ -64,6 +64,7 @@ class _RouletteScreenState extends State<RouletteScreen> {
   }
 
   void _onGameComplete(GameResult result) {
+    if (!mounted) return;
     Navigator.pop(context, result);
   }
 

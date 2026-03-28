@@ -106,7 +106,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
     }
   }
 
-  Future<bool> _grantBonusAndMarkChoice() async {
+  Future<bool> _grantBonusAndMarkChoice({bool markBonusTime = true}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final dailyRanOutTimestamp =
@@ -127,7 +127,11 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
           final currentRemaining = prefs.getInt('remaining_seconds') ?? 0;
           final newRemaining = currentRemaining + bonusSecs;
           await prefs.setInt('remaining_seconds', newRemaining);
-          await prefs.setInt('last_bonus_time', now);
+          // Only stamp last_bonus_time immediately when not going into a game.
+          // When playing a game, the caller sets it after the game finishes.
+          if (markBonusTime) {
+            await prefs.setInt('last_bonus_time', now);
+          }
           bonusGranted = true;
         }
       }
@@ -164,30 +168,40 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
   }
 
   Future<void> _goToGambleGame(String routePath) async {
-    await _grantBonusAndMarkChoice();
+    // Grant bonus time but don't stamp last_bonus_time yet —
+    // the cooldown should start after the game ends, not when it begins.
+    final bonusGranted = await _grantBonusAndMarkChoice(markBonusTime: false);
     if (!mounted) return;
     final result = await context.push(routePath);
+    // Game is done — now stamp the cooldown start time.
+    if (bonusGranted) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        'last_bonus_time',
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    }
     if (result != null && result is GameResult) {
       _handleGameResult(result);
     }
   }
 
   Future<void> _handleGameResult(GameResult result) async {
+    if (!mounted) return;
     if (_usageTimer != null) {
       await _usageTimer!.reload();
     }
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => GameResultScreen(
-            result: result,
-            packageName: packageName,
-            appName: appName,
-          ),
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GameResultScreen(
+          result: result,
+          packageName: packageName,
+          appName: appName,
         ),
-      );
-    }
+      ),
+    );
   }
 
   String _formatTime(int seconds) {
