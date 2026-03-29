@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:go_router/go_router.dart';
 import 'package:quit/game_result.dart';
 import 'dart:ui';
 import '../games/mines_game.dart';
@@ -60,7 +61,7 @@ class _MinesScreenState extends State<MinesScreen>
 
   void _onGameComplete(GameResult result) {
     if (!mounted) return;
-    Navigator.pop(context, result);
+    context.pop(result);
   }
 
   void _cashOut() => _game.cashOut();
@@ -96,7 +97,7 @@ class _MinesScreenState extends State<MinesScreen>
             GameHeader(
               title: MinesConstants.gameTitle,
               bettingTime: MinesConstants.formatTime(remainingTime),
-              onBack: () => Navigator.pop(context),
+              onBack: () => context.pop(),
             ),
             Expanded(child: GameWidget(game: _game)),
             _buildBottomControls(),

@@ -1,8 +1,5 @@
-import 'package:flutter/widgets.dart' as flutter;
+import 'package:flutter/material.dart';
 
-const flutter.IconData kDiamond = flutter.IconData(
-  0xf04ed,
-  fontFamily: 'MaterialIcons',
-);
+const IconData kDiamond = Icons.diamond;
 
-final String kDiamondGlyph = String.fromCharCode(0xf04ed);
+final String kDiamondGlyph = String.fromCharCode(Icons.diamond.codePoint);

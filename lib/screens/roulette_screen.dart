@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:go_router/go_router.dart';
 import 'package:quit/game_result.dart';
 import 'dart:ui';
 import '../games/roulette_game.dart';
@@ -65,7 +66,7 @@ class _RouletteScreenState extends State<RouletteScreen> {
 
   void _onGameComplete(GameResult result) {
     if (!mounted) return;
-    Navigator.pop(context, result);
+    context.pop(result);
   }
 
   @override
@@ -94,7 +95,7 @@ class _RouletteScreenState extends State<RouletteScreen> {
             GameHeader(
               title: 'ROULETTE',
               bettingTime: timeString,
-              onBack: () => Navigator.of(context).pop(),
+              onBack: () => context.pop(),
             ),
             Expanded(flex: 3, child: GameWidget(game: _game)),
             _buildMessagesArea(),

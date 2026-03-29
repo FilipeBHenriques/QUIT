@@ -12,6 +12,8 @@ import 'screens/blackjack_screen.dart';
 import 'screens/roulette_screen.dart';
 import 'screens/mines_screen.dart';
 import 'screens/permissions_screen.dart';
+import 'screens/game_result_screen.dart';
+import 'game_result.dart';
 import 'package:go_router/go_router.dart';
 
 void main() async {
@@ -89,6 +91,17 @@ class QuitApp extends flutter.StatelessWidget {
           GoRoute(
             path: '/permissions',
             builder: (context, state) => const PermissionsScreen(),
+          ),
+          GoRoute(
+            path: '/game_result',
+            builder: (context, state) {
+              final extra = state.extra as Map<String, dynamic>;
+              return GameResultScreen(
+                result: extra['result'] as GameResult,
+                packageName: extra['packageName'] as String,
+                appName: extra['appName'] as String,
+              );
+            },
           ),
         ],
       ),

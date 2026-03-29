@@ -6,7 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:quit/game_result.dart';
 import 'package:quit/usage_timer.dart';
-import 'package:quit/screens/game_result_screen.dart';
 import 'package:quit/theme/neon_palette.dart';
 import 'package:quit/widgets/neon_button.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' show LucideIcons;
@@ -192,16 +191,11 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
       await _usageTimer!.reload();
     }
     if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => GameResultScreen(
-          result: result,
-          packageName: packageName,
-          appName: appName,
-        ),
-      ),
-    );
+    context.pushReplacement('/game_result', extra: {
+      'result': result,
+      'packageName': packageName,
+      'appName': appName,
+    });
   }
 
   String _formatTime(int seconds) {

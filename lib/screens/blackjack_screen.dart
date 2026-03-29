@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flame/game.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:go_router/go_router.dart';
 import '../games/blackjack_game.dart';
 import 'package:quit/game_result.dart';
 import 'package:quit/theme/neon_palette.dart';
@@ -42,7 +43,7 @@ class _BlackjackScreenState extends State<BlackjackScreen> {
 
   void _onGameComplete(GameResult result) {
     if (!mounted) return;
-    Navigator.pop(context, result);
+    context.pop(result);
   }
 
   @override
