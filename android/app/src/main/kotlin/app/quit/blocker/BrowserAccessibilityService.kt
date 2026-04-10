@@ -1,4 +1,4 @@
-package com.example.quit
+package app.quit.blocker
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent

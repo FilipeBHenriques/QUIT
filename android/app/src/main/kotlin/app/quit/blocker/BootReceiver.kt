@@ -1,21 +1,23 @@
-package com.example.quit
+package app.quit.blocker
 
-import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
 
-class ServiceWatchdog : BroadcastReceiver() {
+class BootReceiver : BroadcastReceiver() {
     companion object {
-        private const val TAG = "ServiceWatchdog"
+        private const val TAG = "BootReceiver"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        Log.d(TAG, "⏰ Watchdog triggered - checking service status")
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
+            intent.action == "android.intent.action.QUICKBOOT_POWERON" ||
+            intent.action == "com.htc.intent.action.QUICKBOOT_POWERON"
+        ) {
+            Log.d(TAG, "📱 Device booted - checking if service should restart")
 
-        if (!isServiceRunning(context)) {
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val hasBlockedApps = prefs.getString("flutter.blocked_apps", null) != null ||
                     prefs.getStringSet("flutter.blocked_apps", null)?.isNotEmpty() == true
@@ -23,9 +25,9 @@ class ServiceWatchdog : BroadcastReceiver() {
                     prefs.getStringSet("flutter.blocked_websites", null)?.isNotEmpty() == true
 
             if (hasBlockedApps || hasBlockedWebsites) {
-                Log.w(TAG, "♻️ Service dead but should be running - restarting!")
+                Log.d(TAG, "♻️ Restarting MonitoringService after boot")
                 val serviceIntent = Intent(context, MonitoringService::class.java).apply {
-                    putExtra("action", "watchdog_restart")
+                    putExtra("action", "boot_restart")
                 }
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -34,22 +36,9 @@ class ServiceWatchdog : BroadcastReceiver() {
                         context.startService(serviceIntent)
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "❌ Watchdog failed to restart service", e)
+                    Log.e(TAG, "❌ Failed to restart service after boot", e)
                 }
             }
-        } else {
-            Log.d(TAG, "✅ Service is alive")
         }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun isServiceRunning(context: Context): Boolean {
-        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        for (service in manager.getRunningServices(Integer.MAX_VALUE)) {
-            if (MonitoringService::class.java.name == service.service.className) {
-                return true
-            }
-        }
-        return false
     }
 }

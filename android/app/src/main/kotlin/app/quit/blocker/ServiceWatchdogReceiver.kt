@@ -1,4 +1,4 @@
-package com.example.quit
+package app.quit.blocker
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -10,7 +10,7 @@ class ServiceWatchdogReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "ServiceWatchdog"
-        const val ACTION_WATCHDOG = "com.example.quit.WATCHDOG"
+        const val ACTION_WATCHDOG = "app.quit.blocker.WATCHDOG"
     }
 
     override fun onReceive(context: Context, intent: Intent) {

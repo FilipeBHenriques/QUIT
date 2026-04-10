@@ -1,4 +1,4 @@
-package com.example.quit
+package app.quit.blocker
 
 import android.app.*
 import android.app.usage.UsageEvents
