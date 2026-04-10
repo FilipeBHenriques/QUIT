@@ -1,5 +1,5 @@
 name: quit
-description: "A new Flutter project."
+description: "QUIT - App & Website Blocker"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
@@ -35,7 +35,6 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   installed_apps: ^2.0.0
-  screen_time_api_ios: ^0.0.4
   flutter_launcher_icons: ^0.11.0
   shared_preferences: ^2.1.1
   usage_stats: ^1.3.1
