@@ -1,0 +1,10 @@
+# Copy this file to key.properties (same directory) and fill in your values.
+# key.properties is gitignored and must NEVER be committed.
+#
+# Generate a keystore once with:
+#   keytool -genkey -v -keystore quit-release.keystore -alias quit -keyalg RSA -keysize 2048 -validity 10000
+#
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=quit
+storeFile=C:/path/to/quit-release.keystore
