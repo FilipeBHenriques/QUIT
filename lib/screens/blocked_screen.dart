@@ -16,7 +16,6 @@ class _BlockedScreenState extends State<BlockedScreen>
     with TickerProviderStateMixin {
   static const blockedAppChannel = MethodChannel('com.quit.app/blocked_app');
   static const navigationChannel = MethodChannel('com.quit.app/navigation');
-  static const monitoringChannel = MethodChannel('com.quit.app/monitoring');
 
   String? _blockedPackageName;
   String? _appName;
@@ -90,32 +89,6 @@ class _BlockedScreenState extends State<BlockedScreen>
   }
 
   Future<void> _handleTimerReset() async => _closeActivity();
-
-  Future<void> _launchUnblockedApp() async {
-    if (_blockedPackageName == null) {
-      _closeActivity();
-      return;
-    }
-
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String> blockedApps = prefs.getStringList('blocked_apps') ?? [];
-    blockedApps.remove(_blockedPackageName);
-    await prefs.setStringList('blocked_apps', blockedApps);
-
-    try {
-      await monitoringChannel.invokeMethod('updateBlockedApps', {
-        'blockedApps': blockedApps,
-      });
-    } catch (_) {}
-
-    try {
-      await navigationChannel.invokeMethod('launchApp', {
-        'packageName': _blockedPackageName,
-      });
-    } catch (_) {
-      _closeActivity();
-    }
-  }
 
   Future<void> _launchSafeSearch() async {
     if (_isRedirecting) return;
@@ -436,9 +409,10 @@ class _BlockedScreenState extends State<BlockedScreen>
                           ),
                           const SizedBox(height: 32),
                           _ActionButton(
-                            label: 'UNBLOCK APP',
-                            onPressed: _launchUnblockedApp,
+                            label: 'I WILL DO SOMETHING ELSE',
+                            onPressed: _closeActivity,
                             filled: true,
+                            icon: Icons.home_outlined,
                           ),
                         ],
 
