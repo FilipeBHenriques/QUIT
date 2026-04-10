@@ -23,7 +23,7 @@ class UsageTimer {
   UsageTimer(
     this._prefs, {
     this.resetInterval = const Duration(hours: 24, minutes: 0, seconds: 0),
-    this.bonusRefillInterval = const Duration(hours: 0, minutes: 1, seconds: 0),
+    this.bonusRefillInterval = const Duration(hours: 1),
   }) {
     // Save reset interval to preferences so MonitoringService can read it
     _prefs.setInt('reset_interval_seconds', resetInterval.inSeconds);
@@ -72,15 +72,10 @@ class UsageTimer {
     // ✨ INITIALIZE BONUS SYSTEM
     if (!_prefs.containsKey(_keyLastBonus)) {
       await _prefs.setInt(_keyLastBonus, 0); // 0 = never granted
-      print('✨ Bonus system initialized (never granted)');
     }
 
     // DON'T set reset timestamp here - it will be set on first app usage
     // This way the countdown only starts when user actually uses a blocked app
-
-    print(
-      '⏰ Limit: ${seconds}s, Used: ${usedToday}s, Remaining: ${remainingSeconds}s',
-    );
   }
 
   // State
@@ -138,7 +133,6 @@ class UsageTimer {
         _keyDailyTimeRanOut,
         DateTime.now().millisecondsSinceEpoch,
       );
-      print('⏰ Daily time ran out - bonus timer started');
     }
   }
 
@@ -162,7 +156,6 @@ class UsageTimer {
       'timer_first_choice_made',
     ); // Reset choice flag to show gamble screen again
     await _prefs.remove(_keyLastBonus); // Reset bonus cooldown state too
-    print('⏰ Timer reset: ${dailyLimitSeconds}s available, countdown cleared');
   }
 
   Future<void> checkAndResetIfNeeded() async {
