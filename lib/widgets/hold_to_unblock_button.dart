@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:quit/theme/neon_palette.dart';
 
-const int holdDurationSeconds = 5;
+const int holdDurationSeconds = 30;
 
 class HoldToUnblockButton extends StatefulWidget {
   final Future<void> Function() onUnblocked;
@@ -73,9 +73,7 @@ class _HoldToUnblockButtonState extends State<HoldToUnblockButton>
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: isHolding
-                    ? NeonPalette.rose.withValues(
-                        alpha: 0.45 + progress * 0.40,
-                      )
+                    ? NeonPalette.rose.withValues(alpha: 0.45 + progress * 0.40)
                     : NeonPalette.border,
                 width: 0.5,
               ),

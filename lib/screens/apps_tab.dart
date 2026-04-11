@@ -27,7 +27,6 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
   List<AppInfo> _installedApps = [];
   Set<String> _blockedApps = {};
   bool _loading = true;
-  bool _blockingMode = true;
   final ScrollController _listController = ScrollController();
 
   UsageTimer? _usageTimer;
@@ -152,45 +151,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
       color: NeonPalette.bg,
       child: Column(
         children: [
-          // ── Blocking Mode ──
-          _SettingsCard(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Blocking Mode',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: NeonPalette.text,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      const Text(
-                        'Block immediately when selected',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: NeonPalette.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                NeonSwitch(
-                  value: _blockingMode,
-                  onChanged: (value) => setState(() => _blockingMode = value),
-                  activeColor: kAccent,
-                ),
-              ],
-            ),
-          ),
-
           const SizedBox(height: 2),
-
           // ── Daily Time Limit ──
           _SettingsCard(
             child: Column(
