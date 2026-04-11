@@ -13,6 +13,7 @@ import 'screens/roulette_screen.dart';
 import 'screens/mines_screen.dart';
 import 'screens/permissions_screen.dart';
 import 'screens/game_result_screen.dart';
+import 'screens/stats_screen.dart';
 import 'game_result.dart';
 import 'package:go_router/go_router.dart';
 
@@ -475,6 +476,14 @@ class _BlockingSelectionScreenState
                     onTap: () => setState(() => _index = 1),
                   ),
                 ),
+                flutter.Expanded(
+                  child: _TopSelectorItem(
+                    selected: _index == 2,
+                    icon: Icons.bar_chart_rounded,
+                    label: 'Stats',
+                    onTap: () => setState(() => _index = 2),
+                  ),
+                ),
               ],
             ),
           ),
@@ -482,7 +491,9 @@ class _BlockingSelectionScreenState
           flutter.Expanded(
             child: _index == 0
                 ? const AppsSelectionScreen()
-                : const WebsitesSelectionScreen(),
+                : _index == 1
+                ? const WebsitesSelectionScreen()
+                : const StatsTab(),
           ),
         ],
       ),

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'package:quit/game_result.dart';
+import 'package:quit/services/stats_service.dart';
 import 'package:quit/theme/neon_palette.dart';
 import 'package:quit/widgets/neon_button.dart';
 
@@ -85,6 +86,17 @@ class _GameResultScreenState extends State<GameResultScreen>
     _numberAnimation = IntTween(begin: initialTime, end: finalTime).animate(
       CurvedAnimation(parent: _numberController, curve: Curves.easeOutCubic),
     );
+
+    // Record this game session for statistics
+    await StatsService.recordSession(GameSession(
+      gameName: widget.result.gameName,
+      won: widget.result.won,
+      timeBetSeconds: widget.result.timeChange.abs(),
+      timeResultSeconds: widget.result.timeChange,
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
+      appPackage: widget.packageName,
+      appName: widget.appName,
+    ));
 
     setState(() => _isLoaded = true);
     _numberController.forward();
