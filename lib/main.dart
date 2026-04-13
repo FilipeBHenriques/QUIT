@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'screens/blocked_screen.dart';
 import 'screens/gamble_screen.dart';
@@ -19,6 +20,7 @@ import 'package:go_router/go_router.dart';
 
 void main() async {
   flutter.WidgetsFlutterBinding.ensureInitialized();
+  await MobileAds.instance.initialize();
   await _initializeServicesOnLaunch();
   runApp(const QuitApp());
 }
@@ -70,6 +72,7 @@ class QuitApp extends flutter.StatelessWidget {
               return FirstTimeGambleScreen(
                 packageName: params['packageName'] ?? '',
                 appName: params['appName'] ?? '',
+                retryBetSeconds: int.tryParse(params['retryBet'] ?? '') ?? 0,
               );
             },
           ),

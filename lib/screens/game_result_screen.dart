@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
+import 'package:go_router/go_router.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:quit/game_result.dart';
 import 'package:quit/services/stats_service.dart';
 import 'package:quit/theme/neon_palette.dart';
@@ -27,21 +29,37 @@ class _GameResultScreenState extends State<GameResultScreen>
     with TickerProviderStateMixin {
   static const navigationChannel = MethodChannel('com.quit.app/navigation');
 
+  // ── Animations ─────────────────────────────────────────────────────────────
   late AnimationController _scaleController;
   late AnimationController _numberController;
   late Animation<double> _scaleAnimation;
   Animation<int>? _numberAnimation;
 
+  // ── Timer state ─────────────────────────────────────────────────────────────
   int initialTime = 0;
-  int finalTime = 0;
-  bool hasTime = true;
-  bool _isLoaded = false;
+  int finalTime   = 0;
+  bool hasTime    = true;
+  bool _isLoaded  = false;
+
+  // ── Rewarded ad ─────────────────────────────────────────────────────────────
+  // TODO: replace test IDs with real AdMob IDs before release
+  static const String _rewardedAdUnitId =
+      'ca-app-pub-3940256099942544/5224354917';
+
+  RewardedAd? _rewardedAd;
+  bool _adLoaded    = false;
+  bool _adUsed      = false; // true once button tapped — prevents double-tap
+  bool _earnedRetry = false; // true when user finishes the full ad
+
+  // ──────────────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
     _loadTimeData();
+    // Only load an ad for losses, and only if not already used in this session
+    if (!widget.result.won) _loadRewardedAd();
   }
 
   void _initializeAnimations() {
@@ -67,7 +85,7 @@ class _GameResultScreenState extends State<GameResultScreen>
 
     final newRemaining = math.max(0, currentRemaining + widget.result.timeChange);
     finalTime = newRemaining;
-    hasTime = finalTime > 0;
+    hasTime   = finalTime > 0;
 
     await prefs.setInt('remaining_seconds', finalTime);
 
@@ -87,7 +105,6 @@ class _GameResultScreenState extends State<GameResultScreen>
       CurvedAnimation(parent: _numberController, curve: Curves.easeOutCubic),
     );
 
-    // Record this game session for statistics
     await StatsService.recordSession(GameSession(
       gameName: widget.result.gameName,
       won: widget.result.won,
@@ -102,9 +119,59 @@ class _GameResultScreenState extends State<GameResultScreen>
     _numberController.forward();
   }
 
+  // ── Ad ─────────────────────────────────────────────────────────────────────
+
+  void _loadRewardedAd() {
+    RewardedAd.load(
+      adUnitId: _rewardedAdUnitId,
+      request: const AdRequest(),
+      rewardedAdLoadCallback: RewardedAdLoadCallback(
+        onAdLoaded: (ad) {
+          _rewardedAd = ad;
+          if (mounted) setState(() => _adLoaded = true);
+        },
+        onAdFailedToLoad: (_) {}, // silently fail — button stays in loading state
+      ),
+    );
+  }
+
+  Future<void> _watchAdForRetry() async {
+    if (_rewardedAd == null || _adUsed) return;
+    setState(() => _adUsed = true); // immediately hide to prevent double-tap
+
+    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) async {
+        ad.dispose();
+        _rewardedAd = null;
+        if (!_earnedRetry || !mounted) return;
+
+        // Pass the exact bet amount as a URL param — FirstTimeGambleScreen
+        // writes it to remaining_seconds right before the game loads, after
+        // all async setup (timer reload, grantBonus, etc.) is done.
+        final betBack = widget.result.timeChange.abs();
+        final pkg = Uri.encodeComponent(widget.packageName);
+        final app = Uri.encodeComponent(widget.appName);
+        context.pushReplacement(
+          '/first_time_gamble?packageName=$pkg&appName=$app&retryBet=$betBack',
+        );
+      },
+      // No reload on failure — one chance per loss, no second ad video
+      onAdFailedToShowFullScreenContent: (ad, _) {
+        ad.dispose();
+        _rewardedAd = null;
+      },
+    );
+
+    await _rewardedAd!.show(
+      onUserEarnedReward: (_, _) => _earnedRetry = true,
+    );
+  }
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
+
   String _formatTime(int seconds) {
     final minutes = seconds ~/ 60;
-    final secs = seconds % 60;
+    final secs    = seconds % 60;
     return '$minutes:${secs.toString().padLeft(2, '0')}';
   }
 
@@ -146,19 +213,26 @@ class _GameResultScreenState extends State<GameResultScreen>
 
   @override
   void dispose() {
+    _rewardedAd?.dispose();
     _scaleController.dispose();
     _numberController.dispose();
     super.dispose();
   }
 
+  // ── Build ──────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final isWin = widget.result.won;
+    final isWin        = widget.result.won;
     final primaryColor = isWin ? NeonPalette.mint : NeonPalette.rose;
-    final headline = isWin ? 'YOU WON' : 'YOU LOST';
-    final subhead = isWin
+    final headline     = isWin ? 'YOU WON' : 'YOU LOST';
+    final subhead      = isWin
         ? 'Nice play. Time added to your balance.'
         : 'Rough hand. Time was deducted.';
+
+    // Show immediately on any loss — button is always in the tree, just
+    // disabled (spinner) until the ad finishes loading.
+    final showAdButton = !isWin && !_adUsed;
 
     return Scaffold(
       backgroundColor: NeonPalette.bg,
@@ -169,7 +243,8 @@ class _GameResultScreenState extends State<GameResultScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Close
+
+                // ── Close ────────────────────────────────────────────────────
                 Align(
                   alignment: Alignment.centerRight,
                   child: GestureDetector(
@@ -181,204 +256,204 @@ class _GameResultScreenState extends State<GameResultScreen>
                       decoration: BoxDecoration(
                         color: NeonPalette.surfaceSoft,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: NeonPalette.border,
-                          width: 0.5,
-                        ),
+                        border: Border.all(color: NeonPalette.border, width: 0.5),
                       ),
-                      child: const Icon(
-                        Icons.close,
-                        color: NeonPalette.textMuted,
-                        size: 14,
-                      ),
+                      child: const Icon(Icons.close,
+                          color: NeonPalette.textMuted, size: 14),
                     ),
                   ),
                 ),
 
                 const SizedBox(height: 32),
 
-                // Result icon
+                // ── Result icon ───────────────────────────────────────────────
                 Container(
-                  width: 72,
-                  height: 72,
+                  width: 72, height: 72,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: primaryColor.withValues(alpha: 0.08),
                     border: Border.all(
-                      color: primaryColor.withValues(alpha: 0.35),
-                      width: 0.5,
-                    ),
+                        color: primaryColor.withValues(alpha: 0.35), width: 0.5),
                     boxShadow: [
-                      BoxShadow(
-                        color: primaryColor.withValues(alpha: 0.22),
-                        blurRadius: 28,
-                        spreadRadius: 0,
-                      ),
-                      BoxShadow(
-                        color: primaryColor.withValues(alpha: 0.08),
-                        blurRadius: 60,
-                        spreadRadius: 8,
-                      ),
+                      BoxShadow(color: primaryColor.withValues(alpha: 0.22),
+                          blurRadius: 28),
+                      BoxShadow(color: primaryColor.withValues(alpha: 0.08),
+                          blurRadius: 60, spreadRadius: 8),
                     ],
                   ),
                   child: Icon(
                     isWin ? Icons.check_rounded : Icons.close_rounded,
-                    color: primaryColor,
-                    size: 32,
+                    color: primaryColor, size: 32,
                   ),
                 ),
 
                 const SizedBox(height: 20),
 
-                // Headline
+                // ── Headline ──────────────────────────────────────────────────
                 ScaleTransition(
                   scale: _scaleAnimation,
-                  child: Text(
-                    headline,
+                  child: Text(headline,
                     style: TextStyle(
                       color: primaryColor,
                       fontSize: 48,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 3,
-                      shadows: [
-                        Shadow(
+                      shadows: [Shadow(
                           color: primaryColor.withValues(alpha: 0.7),
-                          blurRadius: 30,
-                        ),
-                      ],
+                          blurRadius: 30)],
                     ),
                   ),
                 ),
 
                 const SizedBox(height: 8),
 
-                Text(
-                  subhead,
+                Text(subhead,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    color: NeonPalette.textMuted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                  ),
+                      color: NeonPalette.textMuted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400),
                 ),
 
-                const SizedBox(height: 40),
+                // ── Watch Ad button — right here, above the cards ─────────────
+                if (showAdButton) ...[
+                  const SizedBox(height: 20),
+                  GestureDetector(
+                    onTap: _adLoaded ? _watchAdForRetry : null,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 14, horizontal: 20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFAB00).withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(0xFFFFAB00).withValues(alpha: 0.35),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (_adLoaded)
+                            const Icon(Icons.play_circle_outline_rounded,
+                                color: Color(0xFFFFAB00), size: 17)
+                          else
+                            const SizedBox(
+                              width: 15, height: 15,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: Color(0xFFFFAB00)),
+                            ),
+                          const SizedBox(width: 9),
+                          const Text('WATCH AD · 1 MORE TRY',
+                            style: TextStyle(
+                              color: Color(0xFFFFAB00),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
 
-                // Time change card
+                const SizedBox(height: 32),
+
+                // ── Time lost/gained card ─────────────────────────────────────
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
-                    vertical: 28,
-                    horizontal: 24,
-                  ),
+                      vertical: 28, horizontal: 24),
                   decoration: BoxDecoration(
                     color: primaryColor.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: primaryColor.withValues(alpha: 0.22),
-                      width: 0.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
+                        color: primaryColor.withValues(alpha: 0.22), width: 0.5),
+                    boxShadow: [BoxShadow(
                         color: primaryColor.withValues(alpha: 0.12),
-                        blurRadius: 24,
-                        spreadRadius: 0,
-                      ),
-                    ],
+                        blurRadius: 24)],
                   ),
-                  child: Column(
-                    children: [
-                      Text(
-                        isWin ? 'TIME GAINED' : 'TIME LOST',
-                        style: const TextStyle(
-                          color: NeonPalette.textMuted,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 3,
-                        ),
+                  child: Column(children: [
+                    Text(isWin ? 'TIME GAINED' : 'TIME LOST',
+                      style: const TextStyle(
+                        color: NeonPalette.textMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 3,
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        widget.result.timeChangeFormattedMinutes,
-                        style: TextStyle(
-                          color: primaryColor,
-                          fontSize: 62,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1,
-                          shadows: [
-                            Shadow(
-                              color: primaryColor.withValues(alpha: 0.65),
-                              blurRadius: 24,
-                            ),
-                          ],
-                        ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(widget.result.timeChangeFormattedMinutes,
+                      style: TextStyle(
+                        color: primaryColor,
+                        fontSize: 62,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1,
+                        shadows: [Shadow(
+                            color: primaryColor.withValues(alpha: 0.65),
+                            blurRadius: 24)],
                       ),
-                    ],
-                  ),
+                    ),
+                  ]),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
 
-                // Time remaining counter
+                // ── Time remaining card ───────────────────────────────────────
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
-                    vertical: 20,
-                    horizontal: 24,
-                  ),
+                      vertical: 20, horizontal: 24),
                   decoration: BoxDecoration(
                     color: NeonPalette.surface,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: NeonPalette.border,
-                      width: 0.5,
-                    ),
+                    border: Border.all(color: NeonPalette.border, width: 0.5),
                   ),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'TIME REMAINING',
-                        style: TextStyle(
-                          color: NeonPalette.textMuted,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 3,
-                        ),
+                  child: Column(children: [
+                    const Text('TIME REMAINING',
+                      style: TextStyle(
+                        color: NeonPalette.textMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 3,
                       ),
-                      const SizedBox(height: 10),
-                      _isLoaded && _numberAnimation != null
-                          ? AnimatedBuilder(
-                              animation: _numberAnimation!,
-                              builder: (context, _) => Text(
-                                _formatTime(_numberAnimation!.value),
-                                style: TextStyle(
-                                  color: hasTime
-                                      ? NeonPalette.text
-                                      : NeonPalette.rose,
-                                  fontSize: 42,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures(),
-                                  ],
-                                ),
-                              ),
-                            )
-                          : const SizedBox(
-                              height: 42,
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  color: NeonPalette.textMuted,
-                                  strokeWidth: 1.5,
-                                ),
+                    ),
+                    const SizedBox(height: 10),
+                    _isLoaded && _numberAnimation != null
+                        ? AnimatedBuilder(
+                            animation: _numberAnimation!,
+                            builder: (context, _) => Text(
+                              _formatTime(_numberAnimation!.value),
+                              style: TextStyle(
+                                color: hasTime
+                                    ? NeonPalette.text
+                                    : NeonPalette.rose,
+                                fontSize: 42,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ],
                               ),
                             ),
-                    ],
-                  ),
+                          )
+                        : const SizedBox(
+                            height: 42,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                  color: NeonPalette.textMuted,
+                                  strokeWidth: 1.5),
+                            ),
+                          ),
+                  ]),
                 ),
 
-                const SizedBox(height: 40),
+                const SizedBox(height: 28),
 
+                // ── Primary action ────────────────────────────────────────────
                 NeonButton(
                   onPressed: _continue,
                   color: NeonPalette.surfaceSoft,
@@ -395,12 +470,9 @@ class _GameResultScreenState extends State<GameResultScreen>
 
                 if (!hasTime) ...[
                   const SizedBox(height: 14),
-                  const Text(
-                    'No time remaining. Try again tomorrow.',
+                  const Text('No time remaining. Try again tomorrow.',
                     style: TextStyle(
-                      color: NeonPalette.textMuted,
-                      fontSize: 13,
-                    ),
+                        color: NeonPalette.textMuted, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
                 ],

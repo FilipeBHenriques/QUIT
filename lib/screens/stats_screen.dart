@@ -193,6 +193,25 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     _loadUsage(_Period.today);
   }
 
+  Future<void> _resetDebugData() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Restore remaining time to daily limit so first-time gamble triggers
+    final limit = prefs.getInt('daily_limit_seconds') ?? 0;
+    await prefs.setInt('remaining_seconds', limit);
+    await prefs.setInt('used_today_seconds', 0);
+    await prefs.remove('game_sessions_v1');
+    await prefs.remove('bonus_used_today_seconds');
+    await prefs.remove('timer_last_reset');
+    await prefs.remove('timer_first_choice_made');
+    await prefs.remove('daily_time_ran_out_timestamp');
+    await prefs.remove('last_bonus_time');
+    // Reload everything
+    _usageCache.clear();
+    _usageLoading[_Period.today]   = false;
+    _usageLoading[_Period.allTime] = false;
+    await _loadAll();
+  }
+
   void _selectPeriod(_Period p) {
     if (_period == p) return;
     setState(() => _period = p);
@@ -372,6 +391,39 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                   ...snap.gameStats.map(_buildGameRow),
                 ],
               ])),
+
+        // ── Debug reset ──────────────────────────────────────────────────────
+        const SizedBox(height: 32),
+        GestureDetector(
+          onTap: _resetDebugData,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: NeonPalette.border,
+                width: 0.5,
+              ),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.refresh_rounded,
+                    size: 13, color: NeonPalette.textMuted),
+                SizedBox(width: 7),
+                Text(
+                  'RESET DEBUG DATA',
+                  style: TextStyle(
+                    color: NeonPalette.textMuted,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }

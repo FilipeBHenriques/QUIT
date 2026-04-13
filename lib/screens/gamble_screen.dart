@@ -13,11 +13,13 @@ import 'package:shadcn_flutter/shadcn_flutter.dart' show LucideIcons;
 class FirstTimeGambleScreen extends StatefulWidget {
   final String packageName;
   final String appName;
+  final int retryBetSeconds; // >0 when coming from an ad retry
 
   const FirstTimeGambleScreen({
     super.key,
     required this.packageName,
     required this.appName,
+    this.retryBetSeconds = 0,
   });
 
   @override
@@ -171,6 +173,15 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
     // the cooldown should start after the game ends, not when it begins.
     final bonusGranted = await _grantBonusAndMarkChoice(markBonusTime: false);
     if (!mounted) return;
+
+    // For ad retries, force-write the exact bet amount right before the game
+    // loads so nothing (MonitoringService, timer reload, etc.) can overwrite it.
+    if (widget.retryBetSeconds > 0) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('remaining_seconds', widget.retryBetSeconds);
+      if (!mounted) return;
+    }
+
     final result = await context.push(routePath);
     // Game is done — now stamp the cooldown start time.
     if (bonusGranted) {

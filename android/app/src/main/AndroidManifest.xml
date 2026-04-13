@@ -81,6 +81,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- AdMob — replace test App ID with real one before release -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3940256099942544~3347511713"/>
+
         <!-- Flutter Embedding -->
         <meta-data
             android:name="flutterEmbedding"
