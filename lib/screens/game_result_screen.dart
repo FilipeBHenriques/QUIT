@@ -28,6 +28,7 @@ class GameResultScreen extends StatefulWidget {
 class _GameResultScreenState extends State<GameResultScreen>
     with TickerProviderStateMixin {
   static const navigationChannel = MethodChannel('com.quit.app/navigation');
+  static const String _retryAvailableKey = 'retry_ad_available';
 
   // ── Animations ─────────────────────────────────────────────────────────────
   late AnimationController _scaleController;
@@ -50,6 +51,7 @@ class _GameResultScreenState extends State<GameResultScreen>
   bool _adLoaded    = false;
   bool _adUsed      = false; // true once button tapped — prevents double-tap
   bool _earnedRetry = false; // true when user finishes the full ad
+  bool _retryAvailable = false;
 
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -80,7 +82,15 @@ class _GameResultScreenState extends State<GameResultScreen>
 
   Future<void> _loadTimeData() async {
     final prefs = await SharedPreferences.getInstance();
-    final currentRemaining = prefs.getInt('remaining_seconds') ?? 0;
+    // On a retry game, the native service may have decremented remaining_seconds
+    // while the user was playing. Use the guaranteed bet amount as the floor so
+    // the result reflects the bet that was actually staked, not the countdown.
+    final retryGuaranteed = prefs.getInt('retry_guaranteed_seconds') ?? 0;
+    final rawRemaining    = prefs.getInt('remaining_seconds') ?? 0;
+    final currentRemaining = math.max(rawRemaining, retryGuaranteed);
+    if (retryGuaranteed > 0) await prefs.remove('retry_guaranteed_seconds');
+
+    _retryAvailable = prefs.getBool(_retryAvailableKey) ?? false;
     initialTime = currentRemaining;
 
     final newRemaining = math.max(0, currentRemaining + widget.result.timeChange);
@@ -88,17 +98,12 @@ class _GameResultScreenState extends State<GameResultScreen>
     hasTime   = finalTime > 0;
 
     await prefs.setInt('remaining_seconds', finalTime);
-
-    if (widget.result.timeChange < 0) {
-      final currentUsed = prefs.getInt('used_today_seconds') ?? 0;
-      await prefs.setInt(
-        'used_today_seconds',
-        currentUsed + widget.result.timeChange.abs(),
-      );
-    } else {
-      final currentUsed = prefs.getInt('used_today_seconds') ?? 0;
-      final newUsed = math.max(0, currentUsed - widget.result.timeChange);
-      await prefs.setInt('used_today_seconds', newUsed);
+    // Track gambling losses separately so setDailyLimit can compute consumed
+    // time correctly (real usage + gambling losses) without relying on
+    // used_today_seconds, which is owned by the native monitoring service.
+    if (!widget.result.won) {
+      final lost = prefs.getInt('gambling_lost_today_seconds') ?? 0;
+      await prefs.setInt('gambling_lost_today_seconds', lost + widget.result.betAmount);
     }
 
     _numberAnimation = IntTween(begin: initialTime, end: finalTime).animate(
@@ -108,7 +113,10 @@ class _GameResultScreenState extends State<GameResultScreen>
     await StatsService.recordSession(GameSession(
       gameName: widget.result.gameName,
       won: widget.result.won,
-      timeBetSeconds: widget.result.timeChange.abs(),
+      timeBetSeconds: widget.result.betAmount,
+      timePayoutSeconds: widget.result.won
+          ? widget.result.betAmount + math.max(0, widget.result.timeChange)
+          : 0,
       timeResultSeconds: widget.result.timeChange,
       timestampMs: DateTime.now().millisecondsSinceEpoch,
       appPackage: widget.packageName,
@@ -137,7 +145,12 @@ class _GameResultScreenState extends State<GameResultScreen>
 
   Future<void> _watchAdForRetry() async {
     if (_rewardedAd == null || _adUsed) return;
-    setState(() => _adUsed = true); // immediately hide to prevent double-tap
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_retryAvailableKey, false);
+    setState(() {
+      _adUsed = true;
+      _retryAvailable = false;
+    }); // immediately hide to prevent double-tap
 
     _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) async {
@@ -148,7 +161,7 @@ class _GameResultScreenState extends State<GameResultScreen>
         // Pass the exact bet amount as a URL param — FirstTimeGambleScreen
         // writes it to remaining_seconds right before the game loads, after
         // all async setup (timer reload, grantBonus, etc.) is done.
-        final betBack = widget.result.timeChange.abs();
+        final betBack = widget.result.betAmount;
         final pkg = Uri.encodeComponent(widget.packageName);
         final app = Uri.encodeComponent(widget.appName);
         context.pushReplacement(
@@ -227,12 +240,12 @@ class _GameResultScreenState extends State<GameResultScreen>
     final primaryColor = isWin ? NeonPalette.mint : NeonPalette.rose;
     final headline     = isWin ? 'YOU WON' : 'YOU LOST';
     final subhead      = isWin
-        ? 'Nice play. Time added to your balance.'
-        : 'Rough hand. Time was deducted.';
+        ? 'Nice play. Net time added after your stake.'
+        : 'Rough hand. Your stake was deducted.';
 
     // Show immediately on any loss — button is always in the tree, just
     // disabled (spinner) until the ad finishes loading.
-    final showAdButton = !isWin && !_adUsed;
+    final showAdButton = !isWin && !_adUsed && _retryAvailable;
 
     return Scaffold(
       backgroundColor: NeonPalette.bg,
@@ -377,7 +390,7 @@ class _GameResultScreenState extends State<GameResultScreen>
                         blurRadius: 24)],
                   ),
                   child: Column(children: [
-                    Text(isWin ? 'TIME GAINED' : 'TIME LOST',
+                    Text(isWin ? 'NET TIME GAINED' : 'TIME PUT ON THE LINE',
                       style: const TextStyle(
                         color: NeonPalette.textMuted,
                         fontSize: 10,

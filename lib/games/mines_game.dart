@@ -85,7 +85,7 @@ class MinesGame extends FlameGame {
 
     // Potential win
     potentialWinText = TextComponent(
-      text: MinesConstants.formatTime(betAmount),
+      text: MinesConstants.formatTime(0),
       position: Vector2(size.x * 0.5, statsY + 70),
       anchor: Anchor.center,
       textRenderer: TextPaint(
@@ -141,7 +141,7 @@ class MinesGame extends FlameGame {
     final multiplier = MinesConstants.calculateMultiplier(diamondsFound);
     multiplierText.text = MinesConstants.formatMultiplier(multiplier);
 
-    final potentialWin = MinesConstants.calculatePotentialWin(
+    final potentialWin = MinesConstants.calculateProfit(
       betAmount,
       diamondsFound,
     );
@@ -194,6 +194,7 @@ class MinesGame extends FlameGame {
     // Create result
     final result = GameResult(
       won: won,
+      betAmount: betAmount,
       timeChange: timeChange,
       gameName: 'Mines',
       resultMessage: won

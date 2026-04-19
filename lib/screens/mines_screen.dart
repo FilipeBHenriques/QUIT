@@ -39,7 +39,7 @@ class _MinesScreenState extends State<MinesScreen>
 
     setState(() {
       remainingTime = remaining;
-      potentialWin = remaining;
+      potentialWin = 0;
       isLoaded = true;
     });
 
@@ -71,7 +71,7 @@ class _MinesScreenState extends State<MinesScreen>
     setState(() {
       diamondsFound = 0;
       currentMultiplier = 1.0;
-      potentialWin = remainingTime;
+      potentialWin = 0;
     });
   }
 
@@ -204,7 +204,7 @@ class _MinesScreenState extends State<MinesScreen>
       fontSize: 13,
       fontWeight: FontWeight.w800,
       letterSpacing: 1.5,
-      text: '${MinesConstants.cashOutButton}  ${MinesConstants.formatTime(potentialWin)}',
+      text: '${MinesConstants.cashOutButton}  +${MinesConstants.formatTime(potentialWin)}',
     );
   }
 

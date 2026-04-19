@@ -33,7 +33,6 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
   int _limitSeconds     = 0;
   int _usedSeconds      = 0;
   int _remainingSeconds = 0;
-  int _bonusSeconds     = 0;
 
   // ── Per-period app usage ───────────────────────────────────────────────────
   final Map<_Period, Map<String, int>> _usageCache   = {};
@@ -74,7 +73,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     _ringAnim = CurvedAnimation(parent: _ringCtrl, curve: Curves.easeOutCubic);
     _loadAll();
     _refreshTimer = Timer.periodic(
-        const Duration(seconds: 5), (_) => _refreshToday());
+        const Duration(seconds: 2), (_) => _refreshToday());
   }
 
   @override
@@ -97,7 +96,9 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     final limit           = prefs.getInt('daily_limit_seconds') ?? 0;
     final used            = prefs.getInt('used_today_seconds')  ?? 0;
     final remaining       = prefs.getInt('remaining_seconds')   ?? 0;
-    final bonus           = (used > limit && limit > 0) ? used - limit : 0;
+    // used_today_seconds = actual screen time (native service only, gambling
+    // no longer touches it). remaining_seconds = spendable balance (affected
+    // by gambling wins/losses on top of actual usage). They don't sum to limit.
 
     final Map<String, AppInfo> cache = {};
     for (final pkg in blockedApps) {
@@ -115,7 +116,6 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
       _limitSeconds     = limit;
       _usedSeconds      = used;
       _remainingSeconds = remaining;
-      _bonusSeconds     = bonus;
       _loading          = false;
     });
     _ringCtrl.forward();
@@ -177,15 +177,16 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     if (!mounted) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
+    final sessions = await StatsService.getAllSessions();
     if (!mounted) return;
     final used      = prefs.getInt('used_today_seconds')  ?? 0;
     final remaining = prefs.getInt('remaining_seconds')   ?? 0;
     final limit     = prefs.getInt('daily_limit_seconds') ?? _limitSeconds;
     setState(() {
+      _allSessions      = sessions;
       _usedSeconds      = used;
       _remainingSeconds = remaining;
       _limitSeconds     = limit;
-      _bonusSeconds     = (used > limit && limit > 0) ? used - limit : 0;
     });
     // Re-fetch today's usage
     _usageCache.remove(_Period.today);
@@ -199,6 +200,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     final limit = prefs.getInt('daily_limit_seconds') ?? 0;
     await prefs.setInt('remaining_seconds', limit);
     await prefs.setInt('used_today_seconds', 0);
+    await prefs.setInt('gambling_lost_today_seconds', 0);
     await prefs.remove('game_sessions_v1');
     await prefs.remove('bonus_used_today_seconds');
     await prefs.remove('timer_last_reset');
@@ -264,12 +266,15 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                isToday ? 'used today' : 'on blocked apps',
+                isToday ? 'toward daily goal' : 'on blocked apps',
                 style: const TextStyle(color: NeonPalette.textMuted, fontSize: 12))),
             const Spacer(),
             if (hasLimit) Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text(_fmt(_remainingSeconds.clamp(0, _limitSeconds)),
-                  style: const TextStyle(color: NeonPalette.text,
+              Text(_fmt(_remainingSeconds.clamp(0, 86400)),
+                  style: TextStyle(
+                      color: _remainingSeconds > _limitSeconds
+                          ? NeonPalette.mint
+                          : NeonPalette.text,
                       fontSize: 18, fontWeight: FontWeight.w800)),
               const Text('remaining',
                   style: TextStyle(color: NeonPalette.textMuted, fontSize: 10)),
@@ -279,12 +284,8 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
             const SizedBox(height: 14),
             _progressBar(progress),
             const SizedBox(height: 6),
-            Text('${(progress * 100).round()}% of daily limit',
+            Text('${(progress * 100).round()}% of daily goal',
                 style: const TextStyle(color: NeonPalette.textMuted, fontSize: 10)),
-          ],
-          if (_bonusSeconds > 0 && isToday) ...[
-            const SizedBox(height: 10),
-            _bonusPill(_bonusSeconds),
           ],
         ])),
 
@@ -610,20 +611,6 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     ]),
   );
 
-  Widget _bonusPill(int s) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-    decoration: BoxDecoration(
-      color: _kAmber.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: _kAmber.withValues(alpha: 0.25), width: 0.5),
-    ),
-    child: Row(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.bolt_rounded, size: 12, color: _kAmber),
-      const SizedBox(width: 5),
-      Text('${_fmt(s)} bonus used', style: const TextStyle(
-          color: _kAmber, fontSize: 11, fontWeight: FontWeight.w600)),
-    ]),
-  );
 
   Color _gameColor(String name) {
     final n = name.toLowerCase();

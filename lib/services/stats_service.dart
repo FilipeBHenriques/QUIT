@@ -5,6 +5,7 @@ class GameSession {
   final String gameName;
   final bool won;
   final int timeBetSeconds;
+  final int timePayoutSeconds; // full time returned on wins, 0 on losses
   final int timeResultSeconds; // positive = won, negative = lost
   final int timestampMs;
   final String appPackage;
@@ -14,6 +15,7 @@ class GameSession {
     required this.gameName,
     required this.won,
     required this.timeBetSeconds,
+    required this.timePayoutSeconds,
     required this.timeResultSeconds,
     required this.timestampMs,
     required this.appPackage,
@@ -24,6 +26,7 @@ class GameSession {
     'gameName': gameName,
     'won': won,
     'timeBetSeconds': timeBetSeconds,
+    'timePayoutSeconds': timePayoutSeconds,
     'timeResultSeconds': timeResultSeconds,
     'timestampMs': timestampMs,
     'appPackage': appPackage,
@@ -34,6 +37,9 @@ class GameSession {
     gameName: json['gameName'] as String,
     won: json['won'] as bool,
     timeBetSeconds: json['timeBetSeconds'] as int,
+    timePayoutSeconds:
+        (json['timePayoutSeconds'] as int?) ??
+        ((json['won'] as bool) ? (json['timeBetSeconds'] as int) + ((json['timeResultSeconds'] as int) > 0 ? (json['timeResultSeconds'] as int) : 0) : 0),
     timeResultSeconds: json['timeResultSeconds'] as int,
     timestampMs: json['timestampMs'] as int,
     appPackage: (json['appPackage'] as String?) ?? '',
@@ -49,11 +55,20 @@ class StatsService {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_sessionsKey) ?? [];
     raw.add(jsonEncode(session.toJson()));
-    // Keep only last N sessions
     final trimmed = raw.length > _maxSessions
         ? raw.sublist(raw.length - _maxSessions)
         : raw;
     await prefs.setStringList(_sessionsKey, trimmed);
+  }
+
+  /// Remove the most recently recorded session. Used when a retry voids the
+  /// preceding loss — that loss should not appear in stats at all.
+  static Future<void> removeLastSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_sessionsKey) ?? [];
+    if (raw.isEmpty) return;
+    raw.removeLast();
+    await prefs.setStringList(_sessionsKey, raw);
   }
 
   static Future<List<GameSession>> getAllSessions() async {
@@ -77,10 +92,10 @@ class StatsService {
     int totalWonSeconds = 0;
     int totalLostSeconds = 0;
     for (final s in sessions) {
-      if (s.timeResultSeconds > 0) {
-        totalWonSeconds += s.timeResultSeconds;
+      if (s.won) {
+        totalWonSeconds += s.timePayoutSeconds; // bet returned + profit
       } else {
-        totalLostSeconds += s.timeResultSeconds.abs();
+        totalLostSeconds += s.timeBetSeconds;   // amount staked and lost
       }
     }
     final netSeconds = totalWonSeconds - totalLostSeconds;
@@ -120,8 +135,8 @@ class StatsService {
     GameSession? biggestWin;
     int biggestWinVal = 0;
     for (final s in sessions) {
-      if (s.won && s.timeResultSeconds > biggestWinVal) {
-        biggestWinVal = s.timeResultSeconds;
+      if (s.won && s.timePayoutSeconds > biggestWinVal) {
+        biggestWinVal = s.timePayoutSeconds;
         biggestWin = s;
       }
     }

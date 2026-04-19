@@ -24,6 +24,9 @@ class AppsSelectionScreen extends StatefulWidget {
 }
 
 class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
+  static const int _sliderStepMinutes = 30;
+  static const int _sliderSoftCapMinutes = 120;
+
   List<AppInfo> _installedApps = [];
   Set<String> _blockedApps = {};
   bool _loading = true;
@@ -31,6 +34,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
 
   UsageTimer? _usageTimer;
   int _dailyLimitMinutes = 0;
+  int _dailyLimitSliderMaxMinutes = _sliderSoftCapMinutes;
   Timer? _timerUpdateTimer;
   bool _isSearchOpen = false;
 
@@ -61,6 +65,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
     await _usageTimer!.checkAndResetIfNeeded();
     setState(() {
       _dailyLimitMinutes = (_usageTimer!.dailyLimitSeconds / 60).round();
+      _dailyLimitSliderMaxMinutes = _sliderMaxForMinutes(_dailyLimitMinutes);
     });
   }
 
@@ -106,10 +111,34 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
   }
 
   Future<void> _updateDailyLimit(int minutes) async {
-    setState(() => _dailyLimitMinutes = minutes);
+    setState(() {
+      _dailyLimitMinutes = minutes;
+      // Shrink the slider range back to what's appropriate for this value.
+      // Expansion still works (dragging to the edge grows the max), but
+      // settling on a lower number locks the ceiling back down.
+      _dailyLimitSliderMaxMinutes = _sliderMaxForMinutes(minutes);
+    });
     if (_usageTimer != null) {
       await _usageTimer!.setDailyLimit(minutes * 60);
     }
+  }
+
+  int _sliderMaxForMinutes(int minutes) {
+    if (minutes <= _sliderSoftCapMinutes) return _sliderSoftCapMinutes;
+    final extra = minutes - _sliderSoftCapMinutes;
+    final steps = (extra / _sliderStepMinutes).ceil();
+    return _sliderSoftCapMinutes + ((steps + 1) * _sliderStepMinutes);
+  }
+
+  void _handleDailyLimitDrag(double value) {
+    final rounded = value.round();
+    final shouldExpand = rounded >= _dailyLimitSliderMaxMinutes - 2;
+    setState(() {
+      _dailyLimitMinutes = rounded;
+      if (shouldExpand) {
+        _dailyLimitSliderMaxMinutes += _sliderStepMinutes;
+      }
+    });
   }
 
   Future<void> _openSearchMode() async {
@@ -183,12 +212,21 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                 NeonSlider(
                   value: _dailyLimitMinutes.toDouble(),
                   min: 0,
-                  max: 120,
-                  divisions: 120,
-                  onChanged: (v) =>
-                      setState(() => _dailyLimitMinutes = v.round()),
+                  max: _dailyLimitSliderMaxMinutes.toDouble(),
+                  divisions: _dailyLimitSliderMaxMinutes,
+                  onChanged: _handleDailyLimitDrag,
                   onChangeEnd: (v) => _updateDailyLimit(v.round()),
                   activeColor: kAccent,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _dailyLimitSliderMaxMinutes <= _sliderSoftCapMinutes
+                      ? 'Drag to set your goal. It expands if you need more.'
+                      : 'Keep dragging near the edge to extend the limit.',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: NeonPalette.textMuted,
+                  ),
                 ),
                 if (_dailyLimitMinutes > 0 && _usageTimer != null) ...[
                   const SizedBox(height: 18),
@@ -202,7 +240,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                     children: [
                       Expanded(
                         child: _StatColumn(
-                          label: 'Daily Used',
+                          label: 'Goal Used',
                           value: _usageTimer!.dailyTimeUsedFormatted,
                           valueColor: kAccent,
                           align: CrossAxisAlignment.start,
@@ -210,7 +248,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                       ),
                       Expanded(
                         child: _StatColumn(
-                          label: 'Remaining',
+                          label: 'Before Limit',
                           value: _usageTimer!.remainingFormatted,
                           valueColor: NeonPalette.text,
                           align: CrossAxisAlignment.end,

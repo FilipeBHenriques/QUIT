@@ -385,6 +385,7 @@ class BlackjackGame extends FlameGame with TapCallbacks {
     final timeChange = push ? 0 : (won ? betAmount : -betAmount);
     final result = GameResult(
       won: won || push,
+      betAmount: betAmount,
       timeChange: timeChange,
       gameName: 'Blackjack',
       resultMessage: message,

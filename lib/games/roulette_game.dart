@@ -111,8 +111,7 @@ class RouletteGame extends FlameGame {
 
     final int timeChange;
     if (won) {
-      final payout = (betAmount * currentBet!.payout).toInt();
-      timeChange = payout;
+      timeChange = betAmount * currentBet!.payout;
       resultMessage = '${RouletteText.winner} ${currentBet!.name}!';
     } else {
       timeChange = -betAmount;
@@ -127,6 +126,7 @@ class RouletteGame extends FlameGame {
 
     final result = GameResult(
       won: won,
+      betAmount: betAmount,
       timeChange: timeChange,
       gameName: 'Roulette',
       resultMessage: resultMessage,

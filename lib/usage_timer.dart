@@ -4,12 +4,13 @@ import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UsageTimer {
-  static const String _keyDailyLimit = 'daily_limit_seconds';
-  static const String _keyRemaining = 'remaining_seconds';
-  static const String _keyLastReset = 'timer_last_reset';
-  static const String _keySessionStart = 'current_session_start';
-  static const String _keyUsedToday = 'used_today_seconds';
-  static const String _keyLastBonus = 'last_bonus_time';
+  static const String _keyDailyLimit     = 'daily_limit_seconds';
+  static const String _keyRemaining      = 'remaining_seconds';
+  static const String _keyLastReset      = 'timer_last_reset';
+  static const String _keySessionStart   = 'current_session_start';
+  static const String _keyUsedToday      = 'used_today_seconds';
+  static const String _keyGamblingLost   = 'gambling_lost_today_seconds';
+  static const String _keyLastBonus      = 'last_bonus_time';
   static const String _keyDailyTimeRanOut = 'daily_time_ran_out_timestamp';
 
   final SharedPreferences _prefs;
@@ -42,23 +43,37 @@ class UsageTimer {
   int get dailyLimitSeconds => _prefs.getInt(_keyDailyLimit) ?? 0;
 
   Future<void> setDailyLimit(int seconds) async {
-    // Get actual used time from persistent storage (NOT calculated)
-    final usedToday = _prefs.getInt(_keyUsedToday) ?? 0;
+    final oldLimit         = _prefs.getInt(_keyDailyLimit)   ?? 0;
+    final currentRemaining = _prefs.getInt(_keyRemaining)    ?? 0;
+    final usedToday        = _prefs.getInt(_keyUsedToday)    ?? 0;
+    final gamblingLost     = _prefs.getInt(_keyGamblingLost) ?? 0;
 
-    // Set new limit
     await _prefs.setInt(_keyDailyLimit, seconds);
 
-    // Calculate new remaining based on actual used time
     if (seconds == 0) {
-      // Disabling: set remaining to 0
+      // Disabling limits entirely.
       await _prefs.setInt(_keyRemaining, 0);
-      await _prefs.remove(_keyDailyTimeRanOut); // Clear the ran out timestamp
+      await _prefs.remove(_keyDailyTimeRanOut);
     } else {
-      // Enabling/changing: remaining = newLimit - actualUsedTime
-      final newRemaining = max(0, seconds - usedToday);
+      // consumed = real screen time + gambling losses (both are irreversible).
+      // Gambling wins are NOT in consumed — they show as remaining > allocation.
+      // Using consumed as the anchor means the slider can never be exploited to
+      // manufacture free time (sliding down floors at 0 but doesn't "bank" a
+      // credit that slides back up can redeem).
+      final consumed = usedToday + gamblingLost;
+      final int newRemaining;
+      if (oldLimit == 0) {
+        // First-time enable: full fresh allocation.
+        newRemaining = seconds;
+      } else {
+        // Preserve any gambling bonus (remaining above the old allocation).
+        final oldAllocation  = max(0, oldLimit - consumed);
+        final gamblingBonus  = max(0, currentRemaining - oldAllocation);
+        final newAllocation  = max(0, seconds - consumed);
+        newRemaining = newAllocation + gamblingBonus;
+      }
       await _prefs.setInt(_keyRemaining, newRemaining);
 
-      // If remaining is already 0, mark that daily time has run out
       if (newRemaining == 0) {
         await _prefs.setInt(
           _keyDailyTimeRanOut,
@@ -149,7 +164,8 @@ class UsageTimer {
 
   Future<void> resetTimer() async {
     await _prefs.setInt(_keyRemaining, dailyLimitSeconds);
-    await _prefs.setInt(_keyUsedToday, 0); // Reset used time
+    await _prefs.setInt(_keyUsedToday, 0);
+    await _prefs.setInt(_keyGamblingLost, 0);
     await _prefs.remove(_keyLastReset); // Clear timestamp - wait for next usage
     await _prefs.remove(_keyDailyTimeRanOut); // Clear daily ran out timestamp
     await _prefs.remove(

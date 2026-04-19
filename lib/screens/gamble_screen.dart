@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:quit/game_result.dart';
+import 'package:quit/services/stats_service.dart';
 import 'package:quit/usage_timer.dart';
 import 'package:quit/theme/neon_palette.dart';
 import 'package:quit/widgets/neon_button.dart';
@@ -30,6 +31,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
     with TickerProviderStateMixin {
   static const navigationChannel = MethodChannel('com.quit.app/navigation');
   static const blockedAppChannel = MethodChannel('com.quit.app/blocked_app');
+  static const String _retryAvailableKey = 'retry_ad_available';
 
   UsageTimer? _usageTimer;
   bool _loading = true;
@@ -101,6 +103,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
     SharedPreferences prefs = await SharedPreferences.getInstance();
     _usageTimer = UsageTimer(prefs);
     await _usageTimer?.checkAndResetIfNeeded();
+    await prefs.setBool(_retryAvailableKey, widget.retryBetSeconds <= 0);
     if (mounted) {
       setState(() => _loading = false);
       _entryController.forward();
@@ -178,7 +181,18 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
     // loads so nothing (MonitoringService, timer reload, etc.) can overwrite it.
     if (widget.retryBetSeconds > 0) {
       final prefs = await SharedPreferences.getInstance();
+      // Restore the exact bet amount so the game sees what was staked.
       await prefs.setInt('remaining_seconds', widget.retryBetSeconds);
+      await prefs.setInt('retry_guaranteed_seconds', widget.retryBetSeconds);
+      // Undo the first loss from the consumed tracker so the slider formula
+      // doesn't permanently count a loss that's being nulled by the retry.
+      final lost = prefs.getInt('gambling_lost_today_seconds') ?? 0;
+      await prefs.setInt(
+        'gambling_lost_today_seconds',
+        math.max(0, lost - widget.retryBetSeconds),
+      );
+      // Remove the voided loss from stats so it doesn't skew net/totals.
+      await StatsService.removeLastSession();
       if (!mounted) return;
     }
 

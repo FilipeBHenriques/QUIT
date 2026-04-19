@@ -3,12 +3,14 @@
 /// Generic result model for all gambling games
 class GameResult {
   final bool won;
+  final int betAmount; // Seconds put on the line for this round
   final int timeChange; // Seconds won (+) or lost (-)
   final String gameName;
   final String resultMessage;
 
   GameResult({
     required this.won,
+    required this.betAmount,
     required this.timeChange,
     required this.gameName,
     this.resultMessage = '',
@@ -34,6 +36,6 @@ class GameResult {
 
   @override
   String toString() {
-    return 'GameResult(won: $won, timeChange: $timeChange, game: $gameName)';
+    return 'GameResult(won: $won, betAmount: $betAmount, timeChange: $timeChange, game: $gameName)';
   }
 }
