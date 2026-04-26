@@ -10,7 +10,7 @@ class BrowserAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "BrowserAccessibility"
-        const val ACTION_URL_VISITED = "com.example.quit.URL_VISITED"
+        const val ACTION_URL_VISITED = "app.quit.blocker.URL_VISITED"
     }
 
     private var lastNotifiedPackage: String? = null

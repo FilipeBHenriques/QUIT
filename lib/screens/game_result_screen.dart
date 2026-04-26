@@ -43,9 +43,8 @@ class _GameResultScreenState extends State<GameResultScreen>
   bool _isLoaded  = false;
 
   // ── Rewarded ad ─────────────────────────────────────────────────────────────
-  // TODO: replace test IDs with real AdMob IDs before release
   static const String _rewardedAdUnitId =
-      'ca-app-pub-3940256099942544/5224354917';
+      'ca-app-pub-5573070067536747/8645861520';
 
   RewardedAd? _rewardedAd;
   bool _adLoaded    = false;

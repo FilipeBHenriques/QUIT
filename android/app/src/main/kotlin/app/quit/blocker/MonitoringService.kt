@@ -323,7 +323,7 @@ class MonitoringService : Service() {
                     handleAccessibilityAppChange(pkg)
                 }
             }
-            "com.example.quit.URL_VISITED" -> {
+            "app.quit.blocker.URL_VISITED" -> {
                 val domain = intent?.getStringExtra("domain")
                 val browserPackage = intent?.getStringExtra("browser_package")
                 Log.d(TAG, "🔗 URL visit: $domain in $browserPackage")
