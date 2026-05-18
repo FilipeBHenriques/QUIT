@@ -1,6 +1,7 @@
 // lib/models/usage_timer.dart
 
 import 'dart:math';
+import 'package:quit/core/time_authority.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UsageTimer {
@@ -77,7 +78,7 @@ class UsageTimer {
       if (newRemaining == 0) {
         await _prefs.setInt(
           _keyDailyTimeRanOut,
-          DateTime.now().millisecondsSinceEpoch,
+          TimeAuthority.effectiveNowMs(_prefs),
         );
       } else {
         await _prefs.remove(_keyDailyTimeRanOut);
@@ -98,6 +99,8 @@ class UsageTimer {
 
   // Derived: time used today
   int get usedSeconds => max(0, dailyLimitSeconds - remainingSeconds);
+  int get walletRemainingSeconds => remainingSeconds;
+  int get dailyRemainingSeconds => max(0, dailyLimitSeconds - usedTodaySeconds);
 
   Future<void> _setRemainingSeconds(int seconds) async {
     await _prefs.setInt(_keyRemaining, max(0, seconds));
@@ -117,7 +120,7 @@ class UsageTimer {
 
     final lastBonus = lastBonusTimestamp;
 
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = TimeAuthority.effectiveNowMs(_prefs);
     final bonusIntervalMs = bonusRefillInterval.inMilliseconds;
     final cooldownAnchor = max(lastBonus, dailyTimeRanOutTimestamp);
 
@@ -132,7 +135,7 @@ class UsageTimer {
 
     final lastBonus = lastBonusTimestamp;
     final bonusIntervalMs = bonusRefillInterval.inMilliseconds;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = TimeAuthority.effectiveNowMs(_prefs);
     final cooldownAnchor = max(lastBonus, dailyTimeRanOutTimestamp);
     final elapsed = now - cooldownAnchor;
 
@@ -146,7 +149,7 @@ class UsageTimer {
     if (dailyTimeRanOutTimestamp == 0) {
       await _prefs.setInt(
         _keyDailyTimeRanOut,
-        DateTime.now().millisecondsSinceEpoch,
+        TimeAuthority.effectiveNowMs(_prefs),
       );
     }
   }
@@ -156,8 +159,9 @@ class UsageTimer {
     if (lastResetTimestamp == 0) return false;
 
     final lastReset = DateTime.fromMillisecondsSinceEpoch(lastResetTimestamp);
-    final now = DateTime.now();
-    final difference = now.difference(lastReset);
+    final nowMs = TimeAuthority.effectiveNowMs(_prefs);
+    final difference =
+        DateTime.fromMillisecondsSinceEpoch(nowMs).difference(lastReset);
 
     return difference >= resetInterval;
   }
@@ -175,8 +179,19 @@ class UsageTimer {
   }
 
   Future<void> checkAndResetIfNeeded() async {
+    await _sanitizeResetAnchorIfCorrupt();
     if (shouldReset()) {
       await resetTimer();
+    }
+  }
+
+  Future<void> _sanitizeResetAnchorIfCorrupt() async {
+    final lastReset = lastResetTimestamp;
+    if (lastReset == 0) return;
+    final nowMs = TimeAuthority.effectiveNowMs(_prefs);
+    final maxFutureMs = nowMs + resetInterval.inMilliseconds;
+    if (lastReset > maxFutureMs) {
+      await _prefs.setInt(_keyLastReset, nowMs);
     }
   }
 
@@ -189,11 +204,14 @@ class UsageTimer {
 
     final lastReset = DateTime.fromMillisecondsSinceEpoch(lastResetTimestamp);
     final nextReset = lastReset.add(resetInterval);
-    final now = DateTime.now();
+    final now = DateTime.fromMillisecondsSinceEpoch(
+      TimeAuthority.effectiveNowMs(_prefs),
+    );
 
-    return nextReset.difference(now).isNegative
-        ? Duration.zero
-        : nextReset.difference(now);
+    final raw = nextReset.difference(now);
+    if (raw.isNegative) return Duration.zero;
+    if (raw > resetInterval) return resetInterval;
+    return raw;
   }
 
   // Calculate time used today

@@ -5,7 +5,9 @@ import 'dart:math' as math;
 import 'package:go_router/go_router.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:quit/game_result.dart';
+import 'package:quit/core/time_authority.dart';
 import 'package:quit/services/stats_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:quit/theme/neon_palette.dart';
 import 'package:quit/widgets/neon_button.dart';
 
@@ -97,6 +99,20 @@ class _GameResultScreenState extends State<GameResultScreen>
     hasTime   = finalTime > 0;
 
     await prefs.setInt('remaining_seconds', finalTime);
+    try {
+      await Supabase.instance.client.rpc('set_wallet_state', params: {
+        'p_balance_seconds': finalTime,
+        'p_daily_limit_seconds': prefs.getInt('daily_limit_seconds') ?? 0,
+        'p_reset_interval_seconds': prefs.getInt('reset_interval_seconds') ?? 86400,
+        'p_reset_anchor_ms': prefs.getInt('timer_last_reset') ?? 0,
+        'p_bonus_refill_interval_seconds': prefs.getInt('bonus_refill_interval_seconds') ?? 3600,
+        'p_bonus_amount_seconds': prefs.getInt('bonus_amount_seconds') ?? 300,
+        'p_last_bonus_ms': prefs.getInt('last_bonus_time') ?? 0,
+        'p_daily_time_ran_out_ms': prefs.getInt('daily_time_ran_out_timestamp') ?? 0,
+      });
+    } catch (_) {
+      // Best-effort sync: keep game flow smooth even if network is unavailable.
+    }
     // Track gambling losses separately so setDailyLimit can compute consumed
     // time correctly (real usage + gambling losses) without relying on
     // used_today_seconds, which is owned by the native monitoring service.
@@ -193,9 +209,9 @@ class _GameResultScreenState extends State<GameResultScreen>
         final prefs = await SharedPreferences.getInstance();
         final lastReset = prefs.getInt('timer_last_reset') ?? 0;
         if (lastReset == 0) {
-          await prefs.setInt(
+        await prefs.setInt(
             'timer_last_reset',
-            DateTime.now().millisecondsSinceEpoch,
+            TimeAuthority.effectiveNowMs(prefs),
           );
         }
         await prefs.setBool('timer_first_choice_made', true);
@@ -210,9 +226,9 @@ class _GameResultScreenState extends State<GameResultScreen>
         final prefs = await SharedPreferences.getInstance();
         final lastReset = prefs.getInt('timer_last_reset') ?? 0;
         if (lastReset == 0) {
-          await prefs.setInt(
+        await prefs.setInt(
             'timer_last_reset',
-            DateTime.now().millisecondsSinceEpoch,
+            TimeAuthority.effectiveNowMs(prefs),
           );
           await prefs.setBool('timer_first_choice_made', true);
         }

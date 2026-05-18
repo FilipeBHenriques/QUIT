@@ -1,17 +1,21 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:quit/game_result.dart';
+import 'package:quit/core/time_authority.dart';
 import 'package:quit/services/stats_service.dart';
 import 'package:quit/usage_timer.dart';
 import 'package:quit/theme/neon_palette.dart';
 import 'package:quit/widgets/neon_button.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart' show LucideIcons;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class FirstTimeGambleScreen extends StatefulWidget {
+class FirstTimeGambleScreen extends ConsumerStatefulWidget {
   final String packageName;
   final String appName;
   final int retryBetSeconds; // >0 when coming from an ad retry
@@ -24,10 +28,10 @@ class FirstTimeGambleScreen extends StatefulWidget {
   });
 
   @override
-  State<FirstTimeGambleScreen> createState() => _FirstTimeGambleScreenState();
+  ConsumerState<FirstTimeGambleScreen> createState() => _FirstTimeGambleScreenState();
 }
 
-class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
+class _FirstTimeGambleScreenState extends ConsumerState<FirstTimeGambleScreen>
     with TickerProviderStateMixin {
   static const navigationChannel = MethodChannel('com.quit.app/navigation');
   static const blockedAppChannel = MethodChannel('com.quit.app/blocked_app');
@@ -44,6 +48,24 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
   int bonusSeconds = 0;
 
   late final AnimationController _entryController;
+
+  Future<void> _syncWalletBalanceFromLocal(SharedPreferences prefs) async {
+    final remaining = prefs.getInt('remaining_seconds') ?? 0;
+    try {
+      await Supabase.instance.client.rpc('set_wallet_state', params: {
+        'p_balance_seconds': remaining,
+        'p_daily_limit_seconds': prefs.getInt('daily_limit_seconds') ?? 0,
+        'p_reset_interval_seconds': prefs.getInt('reset_interval_seconds') ?? 86400,
+        'p_reset_anchor_ms': prefs.getInt('timer_last_reset') ?? 0,
+        'p_bonus_refill_interval_seconds': prefs.getInt('bonus_refill_interval_seconds') ?? 3600,
+        'p_bonus_amount_seconds': prefs.getInt('bonus_amount_seconds') ?? 300,
+        'p_last_bonus_ms': prefs.getInt('last_bonus_time') ?? 0,
+        'p_daily_time_ran_out_ms': prefs.getInt('daily_time_ran_out_timestamp') ?? 0,
+      });
+    } catch (_) {
+      // Best-effort sync; local gameplay flow should continue even offline.
+    }
+  }
 
   @override
   void initState() {
@@ -113,12 +135,20 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
   Future<bool> _grantBonusAndMarkChoice({bool markBonusTime = true}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final now = TimeAuthority.effectiveNowMs(prefs);
+
+      // Critical local state first: never block first-time flow on network.
+      final lastReset = prefs.getInt('timer_last_reset') ?? 0;
+      if (lastReset == 0) {
+        await prefs.setInt('timer_last_reset', now);
+      }
+      await prefs.setBool('timer_first_choice_made', true);
+
       final dailyRanOutTimestamp =
           prefs.getInt('daily_time_ran_out_timestamp') ?? 0;
       bool bonusGranted = false;
 
       if (dailyRanOutTimestamp > 0) {
-        final now = DateTime.now().millisecondsSinceEpoch;
         final lastBonus = prefs.getInt('last_bonus_time') ?? 0;
         final refillSeconds =
             prefs.getInt('bonus_refill_interval_seconds') ?? 3600;
@@ -131,6 +161,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
           final currentRemaining = prefs.getInt('remaining_seconds') ?? 0;
           final newRemaining = currentRemaining + bonusSecs;
           await prefs.setInt('remaining_seconds', newRemaining);
+          unawaited(_syncWalletBalanceFromLocal(prefs));
           // Only stamp last_bonus_time immediately when not going into a game.
           // When playing a game, the caller sets it after the game finishes.
           if (markBonusTime) {
@@ -139,15 +170,6 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
           bonusGranted = true;
         }
       }
-
-      final lastReset = prefs.getInt('timer_last_reset') ?? 0;
-      if (lastReset == 0) {
-        await prefs.setInt(
-          'timer_last_reset',
-          DateTime.now().millisecondsSinceEpoch,
-        );
-      }
-      await prefs.setBool('timer_first_choice_made', true);
       return bonusGranted;
     } catch (_) {
       return false;
@@ -184,6 +206,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
       // Restore the exact bet amount so the game sees what was staked.
       await prefs.setInt('remaining_seconds', widget.retryBetSeconds);
       await prefs.setInt('retry_guaranteed_seconds', widget.retryBetSeconds);
+      await _syncWalletBalanceFromLocal(prefs);
       // Undo the first loss from the consumed tracker so the slider formula
       // doesn't permanently count a loss that's being nulled by the retry.
       final lost = prefs.getInt('gambling_lost_today_seconds') ?? 0;
@@ -202,7 +225,7 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(
         'last_bonus_time',
-        DateTime.now().millisecondsSinceEpoch,
+        TimeAuthority.effectiveNowMs(prefs),
       );
     }
     if (result != null && result is GameResult) {
@@ -212,9 +235,6 @@ class _FirstTimeGambleScreenState extends State<FirstTimeGambleScreen>
 
   Future<void> _handleGameResult(GameResult result) async {
     if (!mounted) return;
-    if (_usageTimer != null) {
-      await _usageTimer!.reload();
-    }
     if (!mounted) return;
     context.pushReplacement('/game_result', extra: {
       'result': result,

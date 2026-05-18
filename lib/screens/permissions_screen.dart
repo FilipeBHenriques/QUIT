@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import '../theme/neon_palette.dart';
 
 class _PermissionItem {
@@ -59,6 +60,13 @@ class _PermissionsScreenState extends State<PermissionsScreen>
           'Prevents Android from killing the monitoring service in the background.',
       icon: Icons.battery_charging_full_rounded,
     ),
+    _PermissionItem(
+      key: 'notifications',
+      title: 'Notifications',
+      description:
+          'Lets QUIT show social alerts for gifts, requests, and updates.',
+      icon: Icons.notifications_active_rounded,
+    ),
   ];
 
   @override
@@ -77,7 +85,7 @@ class _PermissionsScreenState extends State<PermissionsScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _loadStatus();
+      Future<void>.delayed(const Duration(milliseconds: 350), _loadStatus);
     }
   }
 
@@ -93,7 +101,6 @@ class _PermissionsScreenState extends State<PermissionsScreen>
     } catch (_) {
       if (mounted) {
         setState(() {
-          _status = {};
           _loading = false;
         });
       }
@@ -106,6 +113,7 @@ class _PermissionsScreenState extends State<PermissionsScreen>
       'accessibility': 'openAccessibility',
       'overlay': 'openOverlay',
       'battery': 'openBattery',
+      'notifications': 'openNotifications',
     };
     final method = methodMap[key];
     if (method == null) return;
@@ -132,7 +140,13 @@ class _PermissionsScreenState extends State<PermissionsScreen>
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: () {
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      } else {
+                        context.go('/');
+                      }
+                    },
                     icon: const Icon(
                       Icons.arrow_back_ios_new_rounded,
                       size: 18,

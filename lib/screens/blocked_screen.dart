@@ -45,7 +45,6 @@ class _BlockedScreenState extends State<BlockedScreen>
 
     _updateTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (mounted && _usageTimer != null) {
-        await _usageTimer!.reload();
         setState(() {
           if (_usageTimer!.shouldReset()) {
             _handleTimerReset();

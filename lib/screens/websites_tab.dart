@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/neon_palette.dart';
 import '../widgets/neon_switch.dart';
 import '../widgets/hold_to_unblock_button.dart';
@@ -76,8 +77,28 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
   Future<void> _loadData() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final websites = prefs.getStringList('blocked_websites') ?? [];
-      final custom = prefs.getStringList('custom_website_urls') ?? [];
+      var websites = prefs.getStringList('blocked_websites') ?? <String>[];
+      var custom = prefs.getStringList('custom_website_urls') ?? <String>[];
+      try {
+        final uid = Supabase.instance.client.auth.currentUser?.id;
+        if (uid != null) {
+          final row = await Supabase.instance.client
+              .from('user_blocklists')
+              .select('blocked_websites,custom_websites')
+              .eq('user_id', uid)
+              .maybeSingle();
+          if (row != null) {
+            websites = ((row['blocked_websites'] as List?) ?? const <dynamic>[])
+                .map((e) => e.toString())
+                .toList();
+            custom = ((row['custom_websites'] as List?) ?? const <dynamic>[])
+                .map((e) => e.toString())
+                .toList();
+            await prefs.setStringList('blocked_websites', websites);
+            await prefs.setStringList('custom_website_urls', custom);
+          }
+        }
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _blockedWebsites = websites.toSet();
@@ -112,6 +133,7 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('blocked_websites', _blockedWebsites.toList());
+    await _syncBlocklistsToDb(prefs);
     await _syncBlockedWebsites();
   }
 
@@ -140,6 +162,7 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('custom_website_urls', _customUrls);
+    await _syncBlocklistsToDb(prefs);
 
     await _toggleWebsite(cleanUrl, true);
     _customUrlController.clear();
@@ -150,7 +173,18 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
     setState(() => _customUrls.remove(url));
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('custom_website_urls', _customUrls);
+    await _syncBlocklistsToDb(prefs);
     await _toggleWebsite(url, false);
+  }
+
+  Future<void> _syncBlocklistsToDb(SharedPreferences prefs) async {
+    try {
+      await Supabase.instance.client.rpc('set_user_blocklists', params: {
+        'p_blocked_apps': prefs.getStringList('blocked_apps') ?? <String>[],
+        'p_blocked_websites': prefs.getStringList('blocked_websites') ?? <String>[],
+        'p_custom_websites': prefs.getStringList('custom_website_urls') ?? <String>[],
+      });
+    } catch (_) {}
   }
 
   void _showSnack(String message, {bool isError = false}) {

@@ -4,7 +4,6 @@ import 'package:quit/usage_timer.dart';
 import 'package:quit/widgets/hold_to_unblock_button.dart';
 import 'package:quit/widgets/neon_switch.dart';
 import 'package:quit/widgets/neon_slider.dart';
-import 'package:quit/widgets/neon_button.dart';
 import 'package:quit/widgets/neon_progress_bar.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +12,7 @@ import 'package:installed_apps/installed_apps.dart';
 import 'package:quit/screens/app_search_screen.dart';
 import 'package:quit/widgets/app_icon_widget.dart';
 import 'package:quit/theme/neon_palette.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 const Color kAccent = Color(0xFFFF1A5C); // neon rose
 
@@ -37,6 +37,8 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
   int _dailyLimitSliderMaxMinutes = _sliderSoftCapMinutes;
   Timer? _timerUpdateTimer;
   bool _isSearchOpen = false;
+  int _todaySentSeconds = 0;
+  int _todayReceivedSeconds = 0;
 
   @override
   void initState() {
@@ -44,11 +46,13 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
     _loadBlockedApps();
     _initializeTimer();
 
-    _timerUpdateTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _timerUpdateTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
       if (mounted && !_isSearchOpen && _usageTimer != null) {
-        _usageTimer!.reload().then((_) => setState(() {}));
+        await _usageTimer!.reload();
+        setState(() {});
       }
     });
+    _loadTodayTransferStats();
   }
 
   @override
@@ -67,12 +71,71 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
       _dailyLimitMinutes = (_usageTimer!.dailyLimitSeconds / 60).round();
       _dailyLimitSliderMaxMinutes = _sliderMaxForMinutes(_dailyLimitMinutes);
     });
+    await _loadTodayTransferStats();
+  }
+
+  Future<void> _loadTodayTransferStats() async {
+    try {
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (uid == null) return;
+      final now = DateTime.now();
+      final start = DateTime(now.year, now.month, now.day).toUtc().toIso8601String();
+
+      final sentRows = await Supabase.instance.client
+          .from('time_transfers')
+          .select('seconds,type')
+          .eq('sender_id', uid)
+          .eq('status', 'completed')
+          .inFilter('type', ['gift', 'request_approved'])
+          .gte('created_at', start);
+
+      final receivedRows = await Supabase.instance.client
+          .from('time_transfers')
+          .select('seconds,type')
+          .eq('receiver_id', uid)
+          .eq('status', 'completed')
+          .inFilter('type', ['gift', 'request_approved'])
+          .gte('created_at', start);
+
+      int sent = 0;
+      int received = 0;
+      for (final row in (sentRows as List)) {
+        sent += ((row as Map<String, dynamic>)['seconds'] as int?) ?? 0;
+      }
+      for (final row in (receivedRows as List)) {
+        received += ((row as Map<String, dynamic>)['seconds'] as int?) ?? 0;
+      }
+      if (!mounted) return;
+      setState(() {
+        _todaySentSeconds = sent;
+        _todayReceivedSeconds = received;
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadBlockedApps() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final blockedList = prefs.getStringList('blocked_apps') ?? [];
-    setState(() => _blockedApps = blockedList.toSet());
+    var effectiveBlocked = blockedList.toSet();
+    try {
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (uid != null) {
+        final row = await Supabase.instance.client
+            .from('user_blocklists')
+            .select('blocked_apps')
+            .eq('user_id', uid)
+            .maybeSingle();
+        if (row != null) {
+          final remoteBlocked =
+              ((row['blocked_apps'] as List?) ?? const <dynamic>[])
+                  .map((e) => e.toString())
+                  .toSet();
+          effectiveBlocked = remoteBlocked;
+          await prefs.setStringList('blocked_apps', remoteBlocked.toList());
+        }
+      }
+    } catch (_) {}
+    setState(() => _blockedApps = effectiveBlocked);
 
     List<AppInfo> apps = await InstalledApps.getInstalledApps(
       excludeSystemApps: true,
@@ -107,6 +170,7 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
     });
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('blocked_apps', _blockedApps.toList());
+    await _syncBlocklistsToDb(prefs);
     await _syncBlockedApps();
   }
 
@@ -120,7 +184,46 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
     });
     if (_usageTimer != null) {
       await _usageTimer!.setDailyLimit(minutes * 60);
+      final prefs = await SharedPreferences.getInstance();
+      await _syncTimerConfigToNative(minutes * 60);
+      await _syncWalletStateToDb(prefs);
+      await _usageTimer!.reload();
+      if (mounted) setState(() {});
     }
+  }
+
+  Future<void> _syncTimerConfigToNative(int dailyLimitSeconds) async {
+    const platform = MethodChannel('com.quit.app/monitoring');
+    try {
+      await platform.invokeMethod('updateTimerConfig', {
+        'dailyLimitSeconds': dailyLimitSeconds,
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _syncWalletStateToDb(SharedPreferences prefs) async {
+    try {
+      await Supabase.instance.client.rpc('set_wallet_state', params: {
+        'p_balance_seconds': prefs.getInt('remaining_seconds') ?? 0,
+        'p_daily_limit_seconds': prefs.getInt('daily_limit_seconds') ?? 0,
+        'p_reset_interval_seconds': prefs.getInt('reset_interval_seconds') ?? 86400,
+        'p_reset_anchor_ms': prefs.getInt('timer_last_reset') ?? 0,
+        'p_bonus_refill_interval_seconds': prefs.getInt('bonus_refill_interval_seconds') ?? 3600,
+        'p_bonus_amount_seconds': prefs.getInt('bonus_amount_seconds') ?? 300,
+        'p_last_bonus_ms': prefs.getInt('last_bonus_time') ?? 0,
+        'p_daily_time_ran_out_ms': prefs.getInt('daily_time_ran_out_timestamp') ?? 0,
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _syncBlocklistsToDb(SharedPreferences prefs) async {
+    try {
+      await Supabase.instance.client.rpc('set_user_blocklists', params: {
+        'p_blocked_apps': prefs.getStringList('blocked_apps') ?? <String>[],
+        'p_blocked_websites': prefs.getStringList('blocked_websites') ?? <String>[],
+        'p_custom_websites': prefs.getStringList('custom_website_urls') ?? <String>[],
+      });
+    } catch (_) {}
   }
 
   int _sliderMaxForMinutes(int minutes) {
@@ -166,6 +269,17 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
         child: CircularProgressIndicator(color: kAccent, strokeWidth: 1.5),
       );
     }
+
+    final transferAdjustedUsedSeconds =
+        ((_usageTimer?.usedTodaySeconds ?? 0) + _todaySentSeconds)
+            .clamp(0, 1 << 31);
+    final transferAdjustedDailyRemainingSeconds = (_usageTimer == null)
+        ? 0
+        : (_usageTimer!.dailyLimitSeconds - transferAdjustedUsedSeconds)
+            .clamp(0, 1 << 31);
+    final transferAdjustedGoalUsedSeconds = (_usageTimer == null)
+        ? 0
+        : transferAdjustedUsedSeconds.clamp(0, _usageTimer!.dailyLimitSeconds);
 
     final displayedApps = List<AppInfo>.from(_installedApps)
       ..sort((a, b) {
@@ -228,20 +342,25 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                     color: NeonPalette.textMuted,
                   ),
                 ),
-                if (_dailyLimitMinutes > 0 && _usageTimer != null) ...[
+                if (_usageTimer != null) ...[
                   const SizedBox(height: 18),
-                  NeonProgressBar(
-                    value: _usageTimer!.usedTodaySeconds.toDouble(),
-                    max: _usageTimer!.dailyLimitSeconds.toDouble(),
-                    color: kAccent,
-                  ),
+                  if (_dailyLimitMinutes > 0)
+                    NeonProgressBar(
+                      value: transferAdjustedGoalUsedSeconds.toDouble(),
+                      max: _usageTimer!.dailyLimitSeconds.toDouble(),
+                      color: kAccent,
+                    ),
                   const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
                         child: _StatColumn(
                           label: 'Goal Used',
-                          value: _usageTimer!.dailyTimeUsedFormatted,
+                          value: _dailyLimitMinutes > 0
+                              ? _usageTimer!.formatSeconds(
+                                  transferAdjustedGoalUsedSeconds,
+                                )
+                              : '0:00',
                           valueColor: kAccent,
                           align: CrossAxisAlignment.start,
                         ),
@@ -249,12 +368,53 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                       Expanded(
                         child: _StatColumn(
                           label: 'Before Limit',
-                          value: _usageTimer!.remainingFormatted,
+                          value: _usageTimer!.formatSeconds(
+                            transferAdjustedDailyRemainingSeconds,
+                          ),
                           valueColor: NeonPalette.text,
                           align: CrossAxisAlignment.end,
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _StatColumn(
+                          label: 'Available',
+                          value: _usageTimer!.formatSeconds(_usageTimer!.walletRemainingSeconds),
+                          valueColor: NeonPalette.mint,
+                          align: CrossAxisAlignment.start,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _StatColumn(
+                          label: 'Sent Today',
+                          value: _usageTimer!.formatSeconds(_todaySentSeconds),
+                          valueColor: NeonPalette.textMuted,
+                          align: CrossAxisAlignment.start,
+                        ),
+                      ),
+                      Expanded(
+                        child: _StatColumn(
+                          label: 'Received Today',
+                          value: _usageTimer!.formatSeconds(_todayReceivedSeconds),
+                          valueColor: NeonPalette.textMuted,
+                          align: CrossAxisAlignment.end,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Daily goal reflects screen use + sent transfers. Received transfers still raise available balance.',
+                    style: TextStyle(fontSize: 10, color: NeonPalette.textMuted),
                   ),
                   if (_usageTimer!.bonusUsedTodaySeconds > 0) ...[
                     const SizedBox(height: 10),
@@ -303,13 +463,14 @@ class _AppsSelectionScreenState extends State<AppsSelectionScreen> {
                     ),
                   ],
                   const SizedBox(height: 10),
-                  Text(
-                    'Resets in ${_usageTimer!.formatDuration(_usageTimer!.timeUntilReset())}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: NeonPalette.textMuted,
+                  if (_dailyLimitMinutes > 0)
+                    Text(
+                      'Resets in ${_usageTimer!.formatDuration(_usageTimer!.timeUntilReset())}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: NeonPalette.textMuted,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 14),
                 ],
               ],

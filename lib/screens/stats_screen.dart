@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:usage_stats/usage_stats.dart';
 import 'package:quit/services/stats_service.dart';
 import 'package:quit/theme/neon_palette.dart';
@@ -15,13 +17,13 @@ enum _Period { today, allTime }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-class StatsTab extends StatefulWidget {
+class StatsTab extends ConsumerStatefulWidget {
   const StatsTab({super.key});
   @override
-  State<StatsTab> createState() => _StatsTabState();
+  ConsumerState<StatsTab> createState() => _StatsTabState();
 }
 
-class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin {
+class _StatsTabState extends ConsumerState<StatsTab> with SingleTickerProviderStateMixin {
 
   // ── Core ───────────────────────────────────────────────────────────────────
   List<GameSession> _allSessions = [];
@@ -33,6 +35,14 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
   int _limitSeconds     = 0;
   int _usedSeconds      = 0;
   int _remainingSeconds = 0;
+  int _sentTodaySeconds = 0;
+  int _receivedTodaySeconds = 0;
+  int _sentAllTimeSeconds = 0;
+  int _receivedAllTimeSeconds = 0;
+  int _sentTodayCount = 0;
+  int _receivedTodayCount = 0;
+  int _sentAllTimeCount = 0;
+  int _receivedAllTimeCount = 0;
 
   // ── Per-period app usage ───────────────────────────────────────────────────
   final Map<_Period, Map<String, int>> _usageCache   = {};
@@ -89,8 +99,6 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     _allSessions = await StatsService.getAllSessions();
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
-
     final blockedApps     = prefs.getStringList('blocked_apps')     ?? [];
     final blockedWebsites = prefs.getStringList('blocked_websites') ?? [];
     final limit           = prefs.getInt('daily_limit_seconds') ?? 0;
@@ -118,8 +126,58 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
       _remainingSeconds = remaining;
       _loading          = false;
     });
+    await _loadTransferStats();
     _ringCtrl.forward();
     _loadUsage(_Period.today);
+  }
+
+  Future<void> _loadTransferStats() async {
+    try {
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (uid == null) return;
+      final now = DateTime.now();
+      final startDay = DateTime(now.year, now.month, now.day).toUtc().toIso8601String();
+
+      Future<Map<String, int>> totalsFor({
+        required bool sent,
+        String? fromIso,
+      }) async {
+        var q = Supabase.instance.client
+            .from('time_transfers')
+            .select('seconds')
+            .eq(sent ? 'sender_id' : 'receiver_id', uid)
+            .eq('status', 'completed')
+            .inFilter('type', ['gift', 'request_approved']);
+        if (fromIso != null) {
+          q = q.gte('created_at', fromIso);
+        }
+        final rows = await q;
+        var total = 0;
+        var count = 0;
+        for (final row in (rows as List)) {
+          total += ((row as Map<String, dynamic>)['seconds'] as int?) ?? 0;
+          count += 1;
+        }
+        return {'seconds': total, 'count': count};
+      }
+
+      final sentToday = await totalsFor(sent: true, fromIso: startDay);
+      final receivedToday = await totalsFor(sent: false, fromIso: startDay);
+      final sentAll = await totalsFor(sent: true);
+      final receivedAll = await totalsFor(sent: false);
+
+      if (!mounted) return;
+      setState(() {
+        _sentTodaySeconds = sentToday['seconds'] ?? 0;
+        _receivedTodaySeconds = receivedToday['seconds'] ?? 0;
+        _sentAllTimeSeconds = sentAll['seconds'] ?? 0;
+        _receivedAllTimeSeconds = receivedAll['seconds'] ?? 0;
+        _sentTodayCount = sentToday['count'] ?? 0;
+        _receivedTodayCount = receivedToday['count'] ?? 0;
+        _sentAllTimeCount = sentAll['count'] ?? 0;
+        _receivedAllTimeCount = receivedAll['count'] ?? 0;
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadUsage(_Period p) async {
@@ -176,7 +234,6 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
   Future<void> _refreshToday() async {
     if (!mounted) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.reload();
     final sessions = await StatsService.getAllSessions();
     if (!mounted) return;
     final used      = prefs.getInt('used_today_seconds')  ?? 0;
@@ -188,6 +245,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
       _remainingSeconds = remaining;
       _limitSeconds     = limit;
     });
+    await _loadTransferStats();
     // Re-fetch today's usage
     _usageCache.remove(_Period.today);
     _usageLoading[_Period.today] = false;
@@ -223,6 +281,11 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
     final totalAppTime  = _blockedApps.fold(0,
         (sum, pkg) => sum + (_appUsage[pkg] ?? 0));
     final appLoading    = _usageLoading[_period] == true;
+    final sentTransfers = isToday ? _sentTodaySeconds : _sentAllTimeSeconds;
+    final receivedTransfers = isToday ? _receivedTodaySeconds : _receivedAllTimeSeconds;
+    final sentTransferCount = isToday ? _sentTodayCount : _sentAllTimeCount;
+    final receivedTransferCount =
+        isToday ? _receivedTodayCount : _receivedAllTimeCount;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
@@ -238,7 +301,7 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
         _NeonCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(
-              isToday ? _fmt(usedCapped) : _fmt(totalAppTime),
+              isToday ? _fmt(_usedSeconds) : _fmt(totalAppTime),
               style: const TextStyle(
                 color: _kRose, fontSize: 40, fontWeight: FontWeight.w900, height: 1,
                 shadows: [Shadow(color: Color(0x99FF1A5C), blurRadius: 24)])),
@@ -268,6 +331,47 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
                 style: const TextStyle(color: NeonPalette.textMuted, fontSize: 10)),
           ],
         ])),
+
+        const SizedBox(height: 12),
+        _label('TRANSFERS'),
+        const SizedBox(height: 10),
+        _NeonCard(
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  _timeCell('-${_fmt(sentTransfers)}', 'SENT', _kRose),
+                  _vDivider(),
+                  _timeCell('+${_fmt(receivedTransfers)}', 'RECEIVED', NeonPalette.mint),
+                  _vDivider(),
+                  _timeCell(
+                    '${receivedTransfers - sentTransfers >= 0 ? '+' : '-'}${_fmt((receivedTransfers - sentTransfers).abs())}',
+                    'NET',
+                    (receivedTransfers - sentTransfers) >= 0 ? NeonPalette.mint : _kRose,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _divider(),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _countCell('ISSUED', '$sentTransferCount', _kRose),
+                  const SizedBox(width: 12),
+                  _countCell('RECEIVED', '$receivedTransferCount', NeonPalette.mint),
+                  const SizedBox(width: 12),
+                  _countCell(
+                    'NET',
+                    '${receivedTransferCount - sentTransferCount >= 0 ? '+' : ''}${receivedTransferCount - sentTransferCount}',
+                    (receivedTransferCount - sentTransferCount) >= 0
+                        ? NeonPalette.mint
+                        : _kRose,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
 
         const SizedBox(height: 12),
 
@@ -546,6 +650,35 @@ class _StatsTabState extends State<StatsTab> with SingleTickerProviderStateMixin
             fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 2)),
       ]));
 
+  Widget _countCell(String label, String value, Color color) =>
+      Expanded(
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                shadows: [
+                  Shadow(color: color.withValues(alpha: 0.5), blurRadius: 8),
+                ],
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: const TextStyle(
+                color: NeonPalette.textMuted,
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 2,
+              ),
+            ),
+          ],
+        ),
+      );
+
   Widget _vDivider() => Container(width: 0.5, height: 28, color: NeonPalette.border);
   Widget _divider()  => Container(height: 0.5, color: NeonPalette.border);
 
@@ -664,3 +797,5 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(_RingPainter old) =>
       old.progress != progress || old.color != color;
 }
+
+

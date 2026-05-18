@@ -47,7 +47,7 @@ class MonitoringService : Service() {
 
             try {
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                val now = System.currentTimeMillis()
+                val now = getEffectiveNowMs(prefs)
 
                 // Throttled reset check (once per second)
                 if (now - lastResetCheckTimestamp >= 1000L) {
@@ -95,6 +95,8 @@ class MonitoringService : Service() {
         // Static caches to survive service re-creation
         private var cachedBlockedApps: MutableList<String> = mutableListOf()
         private var cachedBlockedWebsites: MutableList<String> = mutableListOf()
+        private const val KEY_TIME_ANCHOR_WALL_MS = "flutter.time_anchor_wall_ms"
+        private const val KEY_TIME_ANCHOR_ELAPSED_MS = "flutter.time_anchor_elapsed_ms"
         
         // Helper to safely read int values from SharedPreferences (handles both Int and Long)
         private fun SharedPreferences.getIntSafe(key: String, defaultValue: Int): Int {
@@ -106,6 +108,32 @@ class MonitoringService : Service() {
             }
         }
 
+    }
+
+    private fun ensureTimeAnchor(prefs: SharedPreferences) {
+        val hasWall = prefs.contains(KEY_TIME_ANCHOR_WALL_MS)
+        val hasElapsed = prefs.contains(KEY_TIME_ANCHOR_ELAPSED_MS)
+        if (!hasWall || !hasElapsed) {
+            prefs.edit()
+                .putLong(KEY_TIME_ANCHOR_WALL_MS, System.currentTimeMillis())
+                .putLong(KEY_TIME_ANCHOR_ELAPSED_MS, SystemClock.elapsedRealtime())
+                .apply()
+        }
+    }
+
+    private fun getEffectiveNowMs(prefs: SharedPreferences): Long {
+        ensureTimeAnchor(prefs)
+        val wallNow = System.currentTimeMillis()
+        val elapsedNow = SystemClock.elapsedRealtime()
+        val anchorWall = prefs.getLong(KEY_TIME_ANCHOR_WALL_MS, wallNow)
+        val anchorElapsed = prefs.getLong(KEY_TIME_ANCHOR_ELAPSED_MS, elapsedNow)
+        val monotonicEstimate = anchorWall + max(0L, elapsedNow - anchorElapsed)
+        val effectiveNow = max(wallNow, monotonicEstimate)
+        prefs.edit()
+            .putLong(KEY_TIME_ANCHOR_WALL_MS, effectiveNow)
+            .putLong(KEY_TIME_ANCHOR_ELAPSED_MS, elapsedNow)
+            .apply()
+        return effectiveNow
     }
 
     override fun onCreate() {
@@ -282,14 +310,15 @@ class MonitoringService : Service() {
     val lastReset = prefs.getLong("flutter.timer_last_reset", 0L)
     if (lastReset == 0L) {
         prefs.edit()
-            .putLong("flutter.timer_last_reset", System.currentTimeMillis())
+            .putLong("flutter.timer_last_reset", getEffectiveNowMs(prefs))
             .apply()
         return false
     }
     
     val resetIntervalSeconds = prefs.getIntSafe("flutter.reset_interval_seconds", 86400)
     val resetIntervalMs = resetIntervalSeconds * 1000L
-    val timeSinceReset = System.currentTimeMillis() - lastReset
+    val now = getEffectiveNowMs(prefs)
+    val timeSinceReset = now - lastReset
     
     if (timeSinceReset >= resetIntervalMs) {
         Log.d(TAG, "⏰ 24h timer expired - resetting now!")
@@ -392,7 +421,7 @@ class MonitoringService : Service() {
 
     private fun calculateBonusAvailability(
         prefs: SharedPreferences,
-        now: Long = System.currentTimeMillis()
+        now: Long = getEffectiveNowMs(prefs)
     ): Pair<Boolean, Long> {
         val dailyRanOutTimestamp = prefs.getLong("flutter.daily_time_ran_out_timestamp", 0L)
         if (dailyRanOutTimestamp == 0L) {
@@ -538,7 +567,7 @@ class MonitoringService : Service() {
                 startTimeTracking()
             } else {
                 // Daily time exhausted - check bonus system
-                val now = System.currentTimeMillis()
+                val now = getEffectiveNowMs(prefs)
                 
                 // If daily time just ran out, mark the timestamp
                 if (dailyRanOutTimestamp == 0L) {
@@ -586,7 +615,7 @@ class MonitoringService : Service() {
 
     private fun startTimeTracking() {
         if (sessionStartTime == null) {
-            sessionStartTime = System.currentTimeMillis()
+            sessionStartTime = SystemClock.elapsedRealtime()
             lastSaveTime = sessionStartTime!!
             
             // SINGLE PLACE: Set reset timestamp if not set
@@ -594,7 +623,7 @@ class MonitoringService : Service() {
             val lastReset = prefs.getLong("flutter.timer_last_reset", 0)
             if (lastReset == 0L) {
                 prefs.edit()
-                    .putLong("flutter.timer_last_reset", System.currentTimeMillis())
+                    .putLong("flutter.timer_last_reset", getEffectiveNowMs(prefs))
                     .apply()
                 Log.d(TAG, "⏰ Started 24h reset countdown")
             }
@@ -608,7 +637,7 @@ class MonitoringService : Service() {
                 if (lastReset == 0L) {
                     // Shouldn't happen, but safety check
                     prefs.edit()
-                        .putLong("flutter.timer_last_reset", System.currentTimeMillis())
+                        .putLong("flutter.timer_last_reset", getEffectiveNowMs(prefs))
                         .apply()
                     Log.d(TAG, "⏰ Started reset countdown (safety fallback)")
                 }
@@ -624,7 +653,7 @@ class MonitoringService : Service() {
             // Use lastSaveTime to calculate elapsed since last save, NOT start time
             // This prevents double counting time that was already deducted in updateTimeTracking
             val referenceTime = if (lastSaveTime > 0) lastSaveTime else startTime
-            val elapsed = ((System.currentTimeMillis() - referenceTime) / 1000).toInt()
+            val elapsed = ((SystemClock.elapsedRealtime() - referenceTime) / 1000).toInt()
             
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val remainingSeconds = prefs.getIntSafe("flutter.remaining_seconds", 0)
@@ -638,7 +667,7 @@ class MonitoringService : Service() {
             
             // If remaining just hit 0, mark that daily time ran out
             if (newRemaining == 0 && remainingSeconds > 0) {
-                editor.putLong("flutter.daily_time_ran_out_timestamp", System.currentTimeMillis())
+                editor.putLong("flutter.daily_time_ran_out_timestamp", getEffectiveNowMs(prefs))
                 Log.d(TAG, "⏰ Daily time ran out in stopTimeTracking - marked timestamp")
             }
             
@@ -652,7 +681,7 @@ class MonitoringService : Service() {
 
     private fun updateTimeTracking() {
         sessionStartTime?.let { startTime ->
-            val currentTime = System.currentTimeMillis()
+            val currentTime = SystemClock.elapsedRealtime()
             
             // CRITICAL: Don't count time when screen is off
             if (!isScreenOn) {
@@ -675,7 +704,7 @@ class MonitoringService : Service() {
                 
                 // If remaining just hit 0, mark that daily time ran out
                 if (newRemaining == 0 && remainingSeconds > 0) {
-                    editor.putLong("flutter.daily_time_ran_out_timestamp", System.currentTimeMillis())
+                    editor.putLong("flutter.daily_time_ran_out_timestamp", getEffectiveNowMs(prefs))
                     Log.d(TAG, "⏰ Daily time ran out - marked timestamp")
                 }
                 
@@ -702,7 +731,7 @@ class MonitoringService : Service() {
                         val blockedApp = app // safe local copy
                             val dailyLimit = prefs.getIntSafe("flutter.daily_limit_seconds", 0)
                             
-                            val now = System.currentTimeMillis()
+                            val now = getEffectiveNowMs(prefs)
                             val (bonusAvailable, timeUntilBonusMs) = calculateBonusAvailability(prefs, now)
                             
                             if (bonusAvailable) {

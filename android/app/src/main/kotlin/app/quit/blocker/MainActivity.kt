@@ -14,6 +14,9 @@ import android.os.PowerManager
 import android.text.TextUtils
 import android.widget.Toast
 import android.content.ComponentName
+import android.app.usage.UsageStatsManager
+import android.app.NotificationManager
+import java.util.Calendar
 
 class MainActivity : FlutterActivity() {
 
@@ -90,6 +93,7 @@ class MainActivity : FlutterActivity() {
                     "accessibility" to isAccessibilityServiceEnabled(),
                     "overlay" to checkOverlayPermission(),
                     "battery" to checkBatteryOptimization(),
+                    "notifications" to checkNotificationPermission(),
                 ))
                 "openUsageStats" -> {
                     try { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) } catch (e: Exception) {}
@@ -128,9 +132,34 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(null)
                 }
+                "openNotifications" -> {
+                    openNotificationSettings()
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }
+    }
+
+    private fun checkNotificationPermission(): Boolean {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return manager.areNotificationsEnabled()
+    }
+
+    private fun openNotificationSettings() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                }
+                startActivity(intent)
+            } else {
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun checkAndRequestPermissions() {
@@ -165,7 +194,23 @@ class MainActivity : FlutterActivity() {
                 android.os.Process.myUid(),
                 packageName
             )
-            mode == AppOpsManager.MODE_ALLOWED
+            if (mode == AppOpsManager.MODE_ALLOWED) {
+                true
+            } else {
+                // OEM fallback: some devices report MODE_DEFAULT even when access works.
+                val usageStatsManager =
+                    getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+                val end = System.currentTimeMillis()
+                val start = Calendar.getInstance().apply {
+                    add(Calendar.DAY_OF_YEAR, -1)
+                }.timeInMillis
+                val stats = usageStatsManager.queryUsageStats(
+                    UsageStatsManager.INTERVAL_DAILY,
+                    start,
+                    end
+                )
+                stats != null && stats.isNotEmpty()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error checking usage stats permission", e)
             false
