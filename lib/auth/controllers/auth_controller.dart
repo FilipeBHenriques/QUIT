@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_env.dart';
+import '../../core/local_profile_store.dart';
 import '../../social/models/profile.dart';
 import '../../social/services/auth_service.dart';
 
@@ -58,6 +60,9 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> _init() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final guestMode = prefs.getBool('guest_mode') ?? false;
+      await LocalProfileStore(prefs).ensureActiveMode(guestEnabled: guestMode);
       final session = _service.session;
       final profile = await _service.getMyProfile();
       state = AuthState(loading: false, session: session, profile: profile);
@@ -69,7 +74,11 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> signInWithGoogle() async {
     state = state.copyWith(loading: true, error: null);
     try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('guest_mode', false);
+      await LocalProfileStore(prefs).ensureActiveMode(guestEnabled: false);
       await _service.signInWithGoogle();
+      await prefs.setBool('guest_mode', false);
       final session = _service.session;
       final profile = await _service.getMyProfile();
       state = AuthState(loading: false, session: session, profile: profile);
@@ -80,6 +89,9 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> signOut() async {
     await _service.signOut();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('guest_mode', false);
+    await LocalProfileStore(prefs).ensureActiveMode(guestEnabled: false);
     state = const AuthState(loading: false);
   }
 

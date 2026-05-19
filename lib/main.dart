@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart' as flutter;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth/controllers/auth_controller.dart';
 import 'auth/screens/auth_gate_screen.dart';
 import 'core/app_env.dart';
+import 'core/local_profile_store.dart';
 import 'game_result.dart';
 import 'screens/blackjack_screen.dart';
 import 'screens/blocked_screen.dart';
@@ -23,7 +23,6 @@ import 'screens/permissions_screen.dart';
 import 'screens/roulette_screen.dart';
 import 'social/screens/social_shell_screen.dart';
 import 'social/services/cloud_state_service.dart';
-import 'social/services/push_notification_service.dart';
 
 const _permissionsChannel = MethodChannel('com.quit.app/permissions');
 
@@ -42,7 +41,6 @@ Future<bool> _hasAllRequiredPermissions() async {
 
 Future<void> main() async {
   flutter.WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
   await MobileAds.instance.initialize();
 
   await Supabase.initialize(
@@ -51,21 +49,22 @@ Future<void> main() async {
   );
 
   await _initializeServicesOnLaunch();
-  await PushNotificationService.instance.initialize();
-  await PushNotificationService.instance.registerCurrentToken();
   runApp(const ProviderScope(child: QuitApp()));
 }
 
 Future<void> _initializeServicesOnLaunch() async {
   try {
+    final prefs = await SharedPreferences.getInstance();
+    final guestMode = prefs.getBool('guest_mode') ?? false;
+    await LocalProfileStore(prefs).ensureActiveMode(guestEnabled: guestMode);
+
     final client = Supabase.instance.client;
-    if (client.auth.currentUser != null) {
+    if (!guestMode && client.auth.currentUser != null) {
       await CloudStateService(client).hydrateLocalCacheFromCloud();
     }
 
     if (!Platform.isAndroid) return;
 
-    final prefs = await SharedPreferences.getInstance();
     const platform = MethodChannel('com.quit.app/monitoring');
 
     final blockedApps = prefs.getStringList('blocked_apps') ?? <String>[];
@@ -90,14 +89,16 @@ final _routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     redirect: (context, state) async {
       final auth = ref.read(authControllerProvider);
+      final prefs = await SharedPreferences.getInstance();
+      final guestMode = prefs.getBool('guest_mode') ?? false;
       final atAuth = state.matchedLocation == '/auth';
       final atPermissions = state.matchedLocation == '/permissions';
 
       if (auth.loading) return null;
-      if (!auth.isAuthenticated && !atAuth) return '/auth';
+      if (!auth.isAuthenticated && !guestMode && !atAuth) return '/auth';
       if (auth.isAuthenticated && atAuth) return '/';
 
-      if (auth.isAuthenticated) {
+      if (auth.isAuthenticated || guestMode) {
         final hasPermissions = await _hasAllRequiredPermissions();
         if (!hasPermissions && !atPermissions) return '/permissions';
         if (hasPermissions && atPermissions) return '/';
@@ -106,9 +107,9 @@ final _routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(path: '/auth', builder: (_, __) => const AuthGateScreen()),
-      GoRoute(path: '/', builder: (_, __) => const SocialShellScreen()),
-      GoRoute(path: '/blocked', builder: (_, __) => const BlockedScreen()),
+      GoRoute(path: '/auth', builder: (context, state) => const AuthGateScreen()),
+      GoRoute(path: '/', builder: (context, state) => const SocialShellScreen()),
+      GoRoute(path: '/blocked', builder: (context, state) => const BlockedScreen()),
       GoRoute(
         path: '/first_time_gamble',
         builder: (context, state) {
@@ -120,10 +121,10 @@ final _routerProvider = Provider<GoRouter>((ref) {
           );
         },
       ),
-      GoRoute(path: '/blackjack', builder: (_, __) => const BlackjackScreen()),
-      GoRoute(path: '/roulette', builder: (_, __) => const RouletteScreen()),
-      GoRoute(path: '/mines', builder: (_, __) => const MinesScreen()),
-      GoRoute(path: '/permissions', builder: (_, __) => const PermissionsScreen()),
+      GoRoute(path: '/blackjack', builder: (context, state) => const BlackjackScreen()),
+      GoRoute(path: '/roulette', builder: (context, state) => const RouletteScreen()),
+      GoRoute(path: '/mines', builder: (context, state) => const MinesScreen()),
+      GoRoute(path: '/permissions', builder: (context, state) => const PermissionsScreen()),
       GoRoute(
         path: '/game_result',
         builder: (context, state) {

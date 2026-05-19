@@ -96,39 +96,44 @@ class _StatsTabState extends ConsumerState<StatsTab> with SingleTickerProviderSt
   // ── Loading ────────────────────────────────────────────────────────────────
 
   Future<void> _loadAll() async {
-    _allSessions = await StatsService.getAllSessions();
+    try {
+      _allSessions = await StatsService.getAllSessions();
 
-    final prefs = await SharedPreferences.getInstance();
-    final blockedApps     = prefs.getStringList('blocked_apps')     ?? [];
-    final blockedWebsites = prefs.getStringList('blocked_websites') ?? [];
-    final limit           = prefs.getInt('daily_limit_seconds') ?? 0;
-    final used            = prefs.getInt('used_today_seconds')  ?? 0;
-    final remaining       = prefs.getInt('remaining_seconds')   ?? 0;
-    // used_today_seconds = actual screen time (native service only, gambling
-    // no longer touches it). remaining_seconds = spendable balance (affected
-    // by gambling wins/losses on top of actual usage). They don't sum to limit.
+      final prefs = await SharedPreferences.getInstance();
+      final blockedApps     = prefs.getStringList('blocked_apps')     ?? [];
+      final blockedWebsites = prefs.getStringList('blocked_websites') ?? [];
+      final limit           = prefs.getInt('daily_limit_seconds') ?? 0;
+      final used            = prefs.getInt('used_today_seconds')  ?? 0;
+      final remaining       = prefs.getInt('remaining_seconds')   ?? 0;
+      // used_today_seconds = actual screen time (native service only, gambling
+      // no longer touches it). remaining_seconds = spendable balance (affected
+      // by gambling wins/losses on top of actual usage). They don't sum to limit.
 
-    final Map<String, AppInfo> cache = {};
-    for (final pkg in blockedApps) {
-      try {
-        final info = await InstalledApps.getAppInfo(pkg);
-        if (info != null) cache[pkg] = info;
-      } catch (_) {}
+      final Map<String, AppInfo> cache = {};
+      for (final pkg in blockedApps) {
+        try {
+          final info = await InstalledApps.getAppInfo(pkg);
+          if (info != null) cache[pkg] = info;
+        } catch (_) {}
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _blockedApps      = blockedApps;
+        _blockedWebsites  = blockedWebsites;
+        _appInfoCache     = cache;
+        _limitSeconds     = limit;
+        _usedSeconds      = used;
+        _remainingSeconds = remaining;
+        _loading          = false;
+      });
+      await _loadTransferStats();
+      _ringCtrl.forward();
+      _loadUsage(_Period.today);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
     }
-
-    if (!mounted) return;
-    setState(() {
-      _blockedApps      = blockedApps;
-      _blockedWebsites  = blockedWebsites;
-      _appInfoCache     = cache;
-      _limitSeconds     = limit;
-      _usedSeconds      = used;
-      _remainingSeconds = remaining;
-      _loading          = false;
-    });
-    await _loadTransferStats();
-    _ringCtrl.forward();
-    _loadUsage(_Period.today);
   }
 
   Future<void> _loadTransferStats() async {

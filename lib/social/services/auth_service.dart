@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:typed_data';
 import '../models/profile.dart';
 import 'cloud_state_service.dart';
-import 'push_notification_service.dart';
 
 class AuthService {
   AuthService(this._supabase, this._googleSignIn);
@@ -36,13 +35,9 @@ class AuthService {
 
     await bootstrapProfile();
     await CloudStateService(_supabase).hydrateLocalCacheFromCloud();
-    await PushNotificationService.instance.registerCurrentToken();
   }
 
   Future<void> signOut() async {
-    try {
-      await PushNotificationService.instance.unregisterCurrentToken();
-    } catch (_) {}
     await _googleSignIn.signOut();
     await _supabase.auth.signOut();
   }

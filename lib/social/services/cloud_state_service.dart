@@ -29,7 +29,8 @@ class CloudStateService {
             'last_bonus_at,daily_time_ran_out_at',
           )
           .eq('user_id', uid)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(const Duration(seconds: 4));
 
       if (walletRow != null) {
         final cloud = WalletSnapshot.fromJson((walletRow as Map).cast<String, dynamic>());
@@ -58,7 +59,8 @@ class CloudStateService {
           .from('user_blocklists')
           .select('blocked_apps,blocked_websites,custom_websites')
           .eq('user_id', uid)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(const Duration(seconds: 4));
 
       if (blockRow != null) {
         final blockedApps = ((blockRow['blocked_apps'] as List?) ?? const <dynamic>[])
@@ -144,7 +146,7 @@ class CloudStateService {
       'p_bonus_amount_seconds': prefs.getInt('bonus_amount_seconds') ?? 300,
       'p_last_bonus_ms': prefs.getInt('last_bonus_time') ?? 0,
       'p_daily_time_ran_out_ms': prefs.getInt('daily_time_ran_out_timestamp') ?? 0,
-    });
+    }).timeout(const Duration(seconds: 4));
     return WalletSnapshot.fromJson((result as Map).cast<String, dynamic>());
   }
 

@@ -21,6 +21,11 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
   bool _loading = true;
   String? _loadError;
 
+  Future<bool> _isGuestMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('guest_mode') ?? false;
+  }
+
   // Must NOT mutate this during build() — initialized in initState
   final Set<String> _expandedSections = {};
 
@@ -80,22 +85,24 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
       var websites = prefs.getStringList('blocked_websites') ?? <String>[];
       var custom = prefs.getStringList('custom_website_urls') ?? <String>[];
       try {
-        final uid = Supabase.instance.client.auth.currentUser?.id;
-        if (uid != null) {
-          final row = await Supabase.instance.client
-              .from('user_blocklists')
-              .select('blocked_websites,custom_websites')
-              .eq('user_id', uid)
-              .maybeSingle();
-          if (row != null) {
-            websites = ((row['blocked_websites'] as List?) ?? const <dynamic>[])
-                .map((e) => e.toString())
-                .toList();
-            custom = ((row['custom_websites'] as List?) ?? const <dynamic>[])
-                .map((e) => e.toString())
-                .toList();
-            await prefs.setStringList('blocked_websites', websites);
-            await prefs.setStringList('custom_website_urls', custom);
+        if (!await _isGuestMode()) {
+          final uid = Supabase.instance.client.auth.currentUser?.id;
+          if (uid != null) {
+            final row = await Supabase.instance.client
+                .from('user_blocklists')
+                .select('blocked_websites,custom_websites')
+                .eq('user_id', uid)
+                .maybeSingle();
+            if (row != null) {
+              websites = ((row['blocked_websites'] as List?) ?? const <dynamic>[])
+                  .map((e) => e.toString())
+                  .toList();
+              custom = ((row['custom_websites'] as List?) ?? const <dynamic>[])
+                  .map((e) => e.toString())
+                  .toList();
+              await prefs.setStringList('blocked_websites', websites);
+              await prefs.setStringList('custom_website_urls', custom);
+            }
           }
         }
       } catch (_) {}
@@ -178,6 +185,7 @@ class _WebsitesSelectionScreenState extends State<WebsitesSelectionScreen> {
   }
 
   Future<void> _syncBlocklistsToDb(SharedPreferences prefs) async {
+    if (await _isGuestMode()) return;
     try {
       await Supabase.instance.client.rpc('set_user_blocklists', params: {
         'p_blocked_apps': prefs.getStringList('blocked_apps') ?? <String>[],
