@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' as flutter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,21 +16,21 @@ class AuthGateScreen extends ConsumerStatefulWidget {
 }
 
 class _AuthGateScreenState extends ConsumerState<AuthGateScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+    with flutter.TickerProviderStateMixin {
+  late final flutter.AnimationController _waveController;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _waveController = flutter.AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 10),
+      duration: const Duration(milliseconds: 2400),
     )..repeat();
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _waveController.dispose();
     super.dispose();
   }
 
@@ -44,127 +44,211 @@ class _AuthGateScreenState extends ConsumerState<AuthGateScreen>
   }
 
   @override
-  Widget build(BuildContext context) {
+  flutter.Widget build(flutter.BuildContext context) {
     final auth = ref.watch(authControllerProvider);
-
     if (auth.loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const flutter.Scaffold(
+        body: flutter.Center(child: flutter.CircularProgressIndicator()),
+      );
     }
 
-    return Scaffold(
-      body: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final t = _controller.value * math.pi * 2;
-          return Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment(-1 + math.sin(t) * 0.2, -1),
-                end: Alignment(1, 1 - math.cos(t) * 0.2),
-                colors: const [
-                  Color(0xFF04060D),
-                  Color(0xFF0A1120),
-                  Color(0xFF170A14),
-                ],
-              ),
+    return flutter.Scaffold(
+      body: flutter.Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const flutter.BoxDecoration(
+          gradient: flutter.LinearGradient(
+            begin: flutter.Alignment.topCenter,
+            end: flutter.Alignment.bottomCenter,
+            colors: [
+              flutter.Color(0xFF04050C),
+              flutter.Color(0xFF020408),
+              flutter.Color(0xFF030408),
+            ],
+          ),
+        ),
+        child: flutter.Stack(
+          children: [
+            flutter.CustomPaint(
+              painter: _GridPainter(),
+              size: flutter.Size.infinite,
             ),
-            child: Stack(
-              children: [
-                Positioned(
-                  top: -80 + math.sin(t) * 30,
-                  left: -40,
-                  child: _glowOrb(const Color(0x66FF1A5C), 220),
-                ),
-                Positioned(
-                  bottom: -120 + math.cos(t * 1.3) * 35,
-                  right: -60,
-                  child: _glowOrb(const Color(0x5530D5FF), 260),
-                ),
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text(
-                          'QUIT',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 52,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 2.0,
-                          ),
+            flutter.SafeArea(
+              child: flutter.Center(
+                child: flutter.Padding(
+                  padding: const flutter.EdgeInsets.all(24),
+                  child: flutter.Column(
+                    mainAxisSize: flutter.MainAxisSize.min,
+                    crossAxisAlignment: flutter.CrossAxisAlignment.center,
+                    children: [
+                      flutter.AnimatedBuilder(
+                        animation: _waveController,
+                        builder: (context, _) {
+                          const letters = ['Q', 'U', 'I', 'T'];
+                          const white = flutter.Color(0xFFFFFFFF);
+                          return flutter.Row(
+                            mainAxisSize: flutter.MainAxisSize.min,
+                            children: List.generate(letters.length, (i) {
+                              final g = (math.sin(
+                                            _waveController.value *
+                                                    2 *
+                                                    math.pi -
+                                                i * math.pi / 2,
+                                          ) +
+                                          1) /
+                                      2;
+                              return flutter.Container(
+                                margin: const flutter.EdgeInsets.symmetric(
+                                  horizontal: 5,
+                                ),
+                                width: 68,
+                                height: 74,
+                                decoration: flutter.BoxDecoration(
+                                  color: const flutter.Color(0xFF080A12),
+                                  borderRadius: flutter.BorderRadius.circular(
+                                    10,
+                                  ),
+                                  border: flutter.Border.all(
+                                    color: white.withValues(
+                                      alpha: 0.10 + g * 0.55,
+                                    ),
+                                    width: 0.5,
+                                  ),
+                                  boxShadow: [
+                                    flutter.BoxShadow(
+                                      color: white.withValues(alpha: g * 0.18),
+                                      blurRadius: 20,
+                                    ),
+                                  ],
+                                ),
+                                alignment: flutter.Alignment.center,
+                                child: flutter.Text(
+                                  letters[i],
+                                  style: flutter.TextStyle(
+                                    fontSize: 36,
+                                    fontWeight: flutter.FontWeight.w800,
+                                    color: flutter.Color.lerp(
+                                      const flutter.Color(0xFF3A4055),
+                                      const flutter.Color(0xFFFFFFFF),
+                                      g,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          );
+                        },
+                      ),
+                      const flutter.SizedBox(height: 20),
+                      const flutter.Text(
+                        'FOCUSED LIVING',
+                        style: flutter.TextStyle(
+                          color: flutter.Color(0xFF6E7488),
+                          fontSize: 10,
+                          fontWeight: flutter.FontWeight.w700,
+                          letterSpacing: 6,
                         ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Beat compulsive loops.\nControl your time.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFFB8C1D6),
-                            fontSize: 15,
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () => ref
-                                .read(authControllerProvider.notifier)
-                                .signInWithGoogle(),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFFF1A5C),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                            child: const Text('Continue with Google'),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton(
-                            onPressed: _continueWithoutAccount,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFE6EBFF),
-                              side: const BorderSide(
-                                color: Color(0x55FFFFFF),
+                      ),
+                      const flutter.SizedBox(height: 28),
+                      flutter.SizedBox(
+                        width: double.infinity,
+                        child: flutter.ElevatedButton(
+                          onPressed: () => ref
+                              .read(authControllerProvider.notifier)
+                              .signInWithGoogle(),
+                          style: flutter.ElevatedButton.styleFrom(
+                            backgroundColor: const flutter.Color(0xFFFFFFFF),
+                            foregroundColor: const flutter.Color(0xFF202124),
+                            elevation: 0,
+                            shadowColor: flutter.Colors.transparent,
+                            shape: flutter.RoundedRectangleBorder(
+                              borderRadius: flutter.BorderRadius.circular(999),
+                              side: const flutter.BorderSide(
+                                color: flutter.Color(0xFFDADCE0),
+                                width: 1,
                               ),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
-                            child: const Text('No account (local only)'),
+                            padding: const flutter.EdgeInsets.symmetric(
+                              vertical: 14,
+                            ),
+                          ),
+                          child: const flutter.Row(
+                            mainAxisAlignment: flutter.MainAxisAlignment.center,
+                            children: [
+                              flutter.Image(
+                                image: flutter.AssetImage(
+                                  'assets/icon/google_g_logo.png',
+                                ),
+                                width: 18,
+                                height: 18,
+                              ),
+                              flutter.SizedBox(width: 12),
+                              flutter.Text(
+                                'Continue with Google',
+                                style: flutter.TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: flutter.FontWeight.w600,
+                                  letterSpacing: 0.1,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        if (auth.error != null) ...[
-                          const SizedBox(height: 12),
-                          Text(
-                            auth.error!,
-                            style: const TextStyle(color: Colors.redAccent),
-                            textAlign: TextAlign.center,
+                      ),
+                      const flutter.SizedBox(height: 10),
+                      flutter.SizedBox(
+                        width: double.infinity,
+                        child: flutter.OutlinedButton(
+                          onPressed: _continueWithoutAccount,
+                          style: flutter.OutlinedButton.styleFrom(
+                            foregroundColor: const flutter.Color(0xFFE9EDFA),
+                            side: const flutter.BorderSide(
+                              color: flutter.Color(0x55FFFFFF),
+                            ),
+                            padding: const flutter.EdgeInsets.symmetric(
+                              vertical: 14,
+                            ),
                           ),
-                        ],
+                          child: const flutter.Text('Guest Login'),
+                        ),
+                      ),
+                      if (auth.error != null) ...[
+                        const flutter.SizedBox(height: 12),
+                        flutter.Text(
+                          auth.error!,
+                          style: const flutter.TextStyle(
+                            color: flutter.Colors.redAccent,
+                          ),
+                          textAlign: flutter.TextAlign.center,
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _glowOrb(Color color, double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color, const Color(0x00000000)],
+          ],
         ),
       ),
     );
   }
+}
+
+class _GridPainter extends flutter.CustomPainter {
+  @override
+  void paint(flutter.Canvas canvas, flutter.Size size) {
+    final paint = flutter.Paint()
+      ..color = const flutter.Color(0xFF14161E).withValues(alpha: 0.4)
+      ..strokeWidth = 0.5;
+    const step = 40.0;
+    for (double x = 0; x <= size.width; x += step) {
+      canvas.drawLine(flutter.Offset(x, 0), flutter.Offset(x, size.height), paint);
+    }
+    for (double y = 0; y <= size.height; y += step) {
+      canvas.drawLine(flutter.Offset(0, y), flutter.Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant flutter.CustomPainter oldDelegate) => false;
 }
